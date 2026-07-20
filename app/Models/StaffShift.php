@@ -53,6 +53,11 @@ class StaffShift extends Model
         return $this->belongsTo(User::class, 'clocked_out_by');
     }
 
+    public function cashSession(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(CashSession::class, 'staff_shift_id');
+    }
+
     public function durationSeconds(): ?int
     {
         if ($this->clocked_in_at === null) {

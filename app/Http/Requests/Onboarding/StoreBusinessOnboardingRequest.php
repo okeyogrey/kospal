@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Onboarding;
 
+use App\Support\Deployment;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -11,9 +12,15 @@ class StoreBusinessOnboardingRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user !== null
-            && ! $user->isPlatformSuperAdmin()
-            && ! $user->memberships()->where('is_active', true)->exists();
+        if ($user === null) {
+            return false;
+        }
+
+        if ($user->isPlatformSuperAdmin() && Deployment::isWeb()) {
+            return false;
+        }
+
+        return ! $user->memberships()->where('is_active', true)->exists();
     }
 
     /**

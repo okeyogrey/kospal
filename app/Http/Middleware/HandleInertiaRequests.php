@@ -2,10 +2,12 @@
 
 namespace App\Http\Middleware;
 
+use App\Contracts\FeatureFlagService;
+use App\Contracts\LicensingService;
+use App\Services\CashSessionService;
 use App\Services\StaffShiftService;
-use App\Services\SubscriptionService;
+use App\Support\Deployment;
 use App\Support\Navigation;
-use App\Support\Plans\PlanLimitChecker;
 use App\Support\Tenancy\ResolvesTenant;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Time\BusinessClock;
@@ -45,19 +47,15 @@ class HandleInertiaRequests extends Middleware
         $business = $tenant->business();
         $limits = null;
         $activeShift = null;
+        $activeCashSession = null;
         $shiftRequired = false;
         $outsideHours = false;
+        $licensing = app(LicensingService::class);
+        $features = app(FeatureFlagService::class);
 
         if ($business) {
-            app(SubscriptionService::class)->expireIfPastDue($business);
-            $checker = app(PlanLimitChecker::class);
-            $limits = [
-                'max_branches' => $checker->maxBranches($business),
-                'active_branches' => $checker->activeBranchCount($business),
-                'max_staff' => $checker->maxStaff($business),
-                'staff_seats' => $checker->staffSeatCount($business),
-                'features' => $business->plan->config()['features'],
-            ];
+            $licensing->refreshStatus($business);
+            $limits = $features->limitsPayload($business);
 
             $businessRole = $tenant->role();
             $branch = $tenant->branch();
@@ -73,6 +71,15 @@ class HandleInertiaRequests extends Middleware
                         'clocked_in_at' => $open->clocked_in_at?->timezone($timezone)->toIso8601String(),
                         'on_active_branch' => $open->branch_id === $branch->id,
                     ];
+
+                    $openCash = app(CashSessionService::class)->openSessionOnBranch($business, $user, $branch->id);
+                    if ($openCash !== null) {
+                        $activeCashSession = [
+                            'id' => $openCash->id,
+                            'opening_float_minor' => $openCash->opening_float,
+                            'opened_at' => $openCash->opened_at?->timezone($timezone)->toIso8601String(),
+                        ];
+                    }
                 }
                 $outsideHours = OperatingHours::isOutsideHours($business, $branch);
             }
@@ -81,6 +88,10 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'deployment' => [
+                'mode' => Deployment::mode(),
+                'is_desktop' => Deployment::isDesktop(),
+            ],
             'auth' => [
                 'user' => $user,
                 'role' => $role,
@@ -98,10 +109,10 @@ class HandleInertiaRequests extends Middleware
                 'business' => $business ? [
                     'id' => $business->id,
                     'name' => $business->name,
-                    'plan' => $business->plan->value,
-                    'subscription_status' => $business->subscription_status->value,
-                    'subscription_ends_at' => $business->subscription_ends_at?->toDateString(),
-                    'allows_write_access' => $business->allowsWriteAccess(),
+                    'plan' => $licensing->plan($business)->value,
+                    'subscription_status' => $licensing->status($business)->value,
+                    'subscription_ends_at' => $business->fresh()->subscription_ends_at?->toDateString(),
+                    'allows_write_access' => $licensing->allowsWriteAccess($business),
                     'country' => $business->country,
                     'currency' => $business->currency,
                     'cashiers_can_log_expenses' => (bool) $business->cashiers_can_log_expenses,
@@ -113,6 +124,7 @@ class HandleInertiaRequests extends Middleware
                 'branches' => $branches,
                 'limits' => $limits,
                 'active_shift' => $activeShift,
+                'active_cash_session' => $activeCashSession,
                 'shift_required' => $shiftRequired,
                 'outside_hours' => $outsideHours,
                 'needs_onboarding' => $user !== null

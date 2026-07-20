@@ -23,7 +23,19 @@ class CustomerFactory extends Factory
             'address' => fake()->optional()->streetAddress(),
             'notes' => fake()->optional()->sentence(),
             'is_active' => true,
+            'credit_enabled' => false,
+            'credit_limit' => null,
+            'payment_terms_days' => null,
         ];
+    }
+
+    public function withCredit(?int $limit = 100000): static
+    {
+        return $this->state(fn () => [
+            'credit_enabled' => true,
+            'credit_limit' => $limit,
+            'payment_terms_days' => 30,
+        ]);
     }
 
     public function inactive(): static

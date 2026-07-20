@@ -45,6 +45,7 @@ class DashboardController extends Controller
             'sales_trend' => $payload['sales_trend'],
             'payment_breakdown' => $payload['payment_breakdown'],
             'loss_breakdown' => $payload['loss_breakdown'],
+            'negotiation_ranking' => $payload['negotiation_ranking'],
             'branches' => $allowedBranches->map(fn (Branch $b) => [
                 'id' => $b->id,
                 'name' => $b->name,

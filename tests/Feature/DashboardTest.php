@@ -27,13 +27,24 @@ class DashboardTest extends TestCase
             ->assertRedirect(route('onboarding.create'));
     }
 
-    public function test_platform_super_admins_are_redirected_to_platform_tools()
+    public function test_platform_super_admins_are_redirected_to_platform_tools_in_web_mode()
     {
+        config(['deployment.mode' => 'web']);
+
         $admin = User::factory()->platformSuperAdmin()->create();
         $this->actingAs($admin);
 
         $this->get(route('dashboard'))
             ->assertRedirect(route('platform.subscription-requests.index'));
+    }
+
+    public function test_platform_super_admins_onboard_locally_in_desktop_mode()
+    {
+        $admin = User::factory()->platformSuperAdmin()->create();
+        $this->actingAs($admin);
+
+        $this->get(route('dashboard'))
+            ->assertRedirect(route('onboarding.create'));
     }
 
     public function test_authenticated_business_members_can_visit_the_dashboard()

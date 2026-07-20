@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\DocumentPrinter;
+use App\Contracts\FeatureFlagService;
 use App\Enums\BusinessRole;
 use App\Enums\PaymentMethod;
 use App\Enums\SaleStatus;
 use App\Http\Requests\Sales\CompleteSaleRequest;
+use App\Http\Requests\Sales\HoldSaleRequest;
+use App\Http\Requests\Sales\PartialReturnRequest;
 use App\Http\Requests\Sales\VoidSaleRequest;
 use App\Models\AuditLog;
 use App\Models\Branch;
@@ -16,10 +20,10 @@ use App\Models\Product;
 use App\Models\Sale;
 use App\Models\User;
 use App\Services\SaleService;
+use App\Support\FeatureFlags\Features;
 use App\Support\Money\Money;
 use App\Support\Tenancy\ResolvesTenant;
 use App\Support\Tenancy\TenantContext;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -60,6 +64,7 @@ class SaleController extends Controller
         $sales = Sale::query()
             ->forBusiness($business)
             ->whereIn('branch_id', $allowedBranchIds)
+            ->where('status', '!=', SaleStatus::Held)
             ->when($dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $dateFrom))
             ->when($dateTo, fn ($q) => $q->whereDate('created_at', '<=', $dateTo))
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
@@ -70,7 +75,7 @@ class SaleController extends Controller
                 fn ($q) => $q->where('payment_method', $paymentMethod),
             )
             ->when(
-                in_array($status, SaleStatus::values(), true),
+                in_array($status, SaleStatus::values(), true) && $status !== SaleStatus::Held->value,
                 fn ($q) => $q->where('status', $status),
             )
             ->when($search !== '', function ($q) use ($search): void {
@@ -118,7 +123,10 @@ class SaleController extends Controller
                 'value' => $method->value,
                 'label' => $method->label(),
             ])->values(),
-            'statuses' => SaleStatus::values(),
+            'statuses' => array_values(array_filter(
+                SaleStatus::values(),
+                static fn (string $value): bool => $value !== SaleStatus::Held->value,
+            )),
             'filters' => [
                 'search' => $search,
                 'date_from' => is_string($dateFrom) ? $dateFrom : null,
@@ -127,7 +135,7 @@ class SaleController extends Controller
                 'cashier_id' => $cashierId,
                 'customer_id' => $customerId,
                 'payment_method' => in_array($paymentMethod, PaymentMethod::values(), true) ? $paymentMethod : null,
-                'status' => in_array($status, SaleStatus::values(), true) ? $status : null,
+                'status' => in_array($status, SaleStatus::values(), true) && $status !== SaleStatus::Held->value ? $status : null,
             ],
             'currency' => $business->currency,
             'permissions' => [
@@ -141,6 +149,7 @@ class SaleController extends Controller
     public function pos(
         TenantContext $tenant,
         ResolvesTenant $resolver,
+        FeatureFlagService $features,
     ): Response {
         $this->authorize('create', Sale::class);
 
@@ -190,6 +199,17 @@ class SaleController extends Controller
             ->sortBy('name')
             ->values();
 
+        $heldSales = Sale::query()
+            ->forBusiness($business)
+            ->where('branch_id', $branch->id)
+            ->where('status', SaleStatus::Held)
+            ->with(['items', 'cashier:id,name'])
+            ->orderByDesc('held_at')
+            ->limit(50)
+            ->get()
+            ->map(fn (Sale $sale) => $this->heldPayload($sale, $business->currency))
+            ->values();
+
         return Inertia::render('sales/pos', [
             'branches' => $allowedBranches->map(fn (Branch $b) => [
                 'id' => $b->id,
@@ -197,20 +217,23 @@ class SaleController extends Controller
             ])->values(),
             'activeBranchId' => $branch->id,
             'products' => $stock,
+            'heldSales' => $heldSales,
             'customers' => Customer::query()
                 ->forBusiness($business)
                 ->active()
                 ->orderBy('name')
                 ->limit(100)
-                ->get(['id', 'name', 'phone']),
-            'paymentMethods' => collect(PaymentMethod::cases())->map(fn (PaymentMethod $method) => [
-                'value' => $method->value,
-                'label' => $method->label(),
-            ])->values(),
+                ->get(['id', 'name', 'phone', 'credit_enabled']),
+            'paymentMethods' => $this->paymentMethodOptions($business, $features),
+            'hasCustomerCredit' => $features->hasFeature($business, Features::CUSTOMER_CREDIT),
             'currency' => $business->currency,
             'permissions' => [
                 'discount' => $user->can('applyDiscount', Sale::class),
+                'negotiate' => $user->can('negotiatePrice', Sale::class),
+                'approve_self' => $user->can('applyDiscount', Sale::class),
                 'create_customer' => $user->can('create', Customer::class),
+                'hold' => $user->can('hold', Sale::class),
+                'negotiation_floor_percent' => (int) ($membership->negotiation_floor_percent ?? 100),
             ],
         ]);
     }
@@ -261,6 +284,155 @@ class SaleController extends Controller
         ]);
     }
 
+    public function lookupBarcode(
+        Request $request,
+        TenantContext $tenant,
+        ResolvesTenant $resolver,
+    ): JsonResponse {
+        $this->authorize('create', Sale::class);
+
+        $business = $tenant->business();
+        $user = $tenant->user();
+        $membership = $tenant->membership();
+        abort_unless($business && $user && $membership, 403);
+
+        $branchId = $request->integer('branch_id') ?: $tenant->branchId();
+        $barcode = trim((string) $request->query('barcode', ''));
+        abort_unless($branchId && $barcode !== '', 422);
+
+        $branch = Branch::query()->forBusiness($business)->whereKey($branchId)->firstOrFail();
+        abort_unless(
+            $resolver->allowedBranches($user, $membership, $business)->contains('id', $branch->id),
+            403,
+        );
+
+        $product = Product::query()
+            ->forBusiness($business)
+            ->active()
+            ->barcode($barcode)
+            ->first();
+
+        if ($product === null) {
+            return response()->json(['product' => null], 404);
+        }
+
+        $quantity = (int) InventoryBalance::query()
+            ->forBusiness($business)
+            ->where('branch_id', $branch->id)
+            ->where('product_id', $product->id)
+            ->value('quantity');
+
+        return response()->json([
+            'product' => $this->posProductPayload($product, $quantity, $business->currency),
+        ]);
+    }
+
+    public function held(
+        Request $request,
+        TenantContext $tenant,
+        ResolvesTenant $resolver,
+    ): JsonResponse {
+        $this->authorize('create', Sale::class);
+
+        $business = $tenant->business();
+        $user = $tenant->user();
+        $membership = $tenant->membership();
+        abort_unless($business && $user && $membership, 403);
+
+        $branchId = $request->integer('branch_id') ?: $tenant->branchId();
+        abort_unless($branchId, 422);
+
+        $branch = Branch::query()->forBusiness($business)->whereKey($branchId)->firstOrFail();
+        abort_unless(
+            $resolver->allowedBranches($user, $membership, $business)->contains('id', $branch->id),
+            403,
+        );
+
+        $held = Sale::query()
+            ->forBusiness($business)
+            ->where('branch_id', $branch->id)
+            ->where('status', SaleStatus::Held)
+            ->with(['items', 'cashier:id,name'])
+            ->orderByDesc('held_at')
+            ->limit(50)
+            ->get()
+            ->map(fn (Sale $sale) => $this->heldPayload($sale, $business->currency))
+            ->values();
+
+        return response()->json(['held_sales' => $held]);
+    }
+
+    public function hold(
+        HoldSaleRequest $request,
+        TenantContext $tenant,
+        SaleService $sales,
+    ): RedirectResponse {
+        $business = $tenant->business();
+        abort_unless($business, 403);
+
+        $sale = $sales->hold(
+            business: $business,
+            data: $request->validated(),
+            actor: $request->user(),
+        );
+
+        return redirect()
+            ->route('sales.pos')
+            ->with('success', 'Sale '.$sale->sale_number.' held.');
+    }
+
+    public function resume(
+        Sale $sale,
+        TenantContext $tenant,
+        SaleService $sales,
+    ): JsonResponse {
+        $this->authorize('view', $sale);
+        abort_unless($sale->status->isHeld(), 422);
+
+        $business = $tenant->business();
+        abort_unless($business, 403);
+
+        $resumed = $sales->resume($sale, request()->user());
+        $resumed->loadMissing('items.product');
+        $quantities = InventoryBalance::query()
+            ->forBusiness($business)
+            ->where('branch_id', $resumed->branch_id)
+            ->whereIn('product_id', $resumed->items->pluck('product_id'))
+            ->pluck('quantity', 'product_id');
+
+        return response()->json([
+            'sale' => [
+                ...$this->heldPayload($resumed, $business->currency),
+                'items' => $resumed->items->map(fn ($item) => [
+                    'product_id' => $item->product_id,
+                    'name' => $item->product_name,
+                    'sku' => $item->sku,
+                    'quantity' => $item->quantity,
+                    'max_quantity' => max($item->quantity, (int) ($quantities[$item->product_id] ?? 0)),
+                    'unit_price_minor' => $item->unit_price,
+                    'list_unit_price_minor' => $item->list_unit_price,
+                    'min_selling_price_minor' => (int) ($item->product?->min_selling_price ?? 0),
+                    'is_negotiable' => (bool) ($item->product?->is_negotiable ?? true),
+                ])->values(),
+            ],
+        ]);
+    }
+
+    public function discardHeld(
+        Sale $sale,
+        TenantContext $tenant,
+        SaleService $sales,
+    ): RedirectResponse {
+        $this->authorize('view', $sale);
+        abort_unless($sale->status->isHeld(), 422);
+
+        $sales->discardHeld($sale, request()->user());
+
+        return redirect()
+            ->route('sales.pos')
+            ->with('success', 'Held sale discarded.');
+    }
+
     public function store(
         CompleteSaleRequest $request,
         TenantContext $tenant,
@@ -283,6 +455,7 @@ class SaleController extends Controller
     public function show(Sale $sale, TenantContext $tenant): Response
     {
         $this->authorize('view', $sale);
+        abort_if($sale->status->isHeld(), 404);
 
         $business = $tenant->business();
         abort_unless($business, 403);
@@ -290,10 +463,12 @@ class SaleController extends Controller
         $sale->load([
             'branch:id,business_id,name',
             'cashier:id,name',
+            'approver:id,name',
             'customer:id,name,phone,email',
             'voider:id,name',
             'items',
             'payments.receiver:id,name',
+            'returns.items',
             'stockMovements' => fn ($q) => $q
                 ->with(['product:id,name', 'user:id,name'])
                 ->orderBy('created_at'),
@@ -318,8 +493,15 @@ class SaleController extends Controller
         return Inertia::render('sales/show', [
             'sale' => $this->detailPayload($sale, $business->currency),
             'activity' => $activity,
+            'paymentMethods' => collect(PaymentMethod::cases())->map(fn (PaymentMethod $method) => [
+                'value' => $method->value,
+                'label' => $method->label(),
+            ])->values(),
             'permissions' => [
                 'void' => $tenant->user()?->can('void', $sale) ?? false,
+                'return' => $tenant->user()?->can('returnItems', $sale) ?? false,
+                'reprint' => $tenant->user()?->can('reprint', $sale) ?? false,
+                'approve_self' => $tenant->user()?->can('applyDiscount', Sale::class) ?? false,
             ],
         ]);
     }
@@ -334,53 +516,45 @@ class SaleController extends Controller
         return back()->with('success', 'Sale voided and stock restored.');
     }
 
-    public function receipt(Sale $sale, TenantContext $tenant): HttpResponse
-    {
-        $this->authorize('view', $sale);
+    public function returnItems(
+        PartialReturnRequest $request,
+        Sale $sale,
+        SaleService $sales,
+    ): RedirectResponse {
+        $saleReturn = $sales->partialReturn($sale, $request->validated(), $request->user());
 
-        $business = $tenant->business();
-        abort_unless($business, 403);
-
-        $sale->load([
-            'branch',
-            'cashier:id,name',
-            'customer:id,name,phone',
-            'items',
-            'payments',
-            'business',
-        ]);
-
-        return response()
-            ->view('sales.receipt', [
-                'sale' => $sale,
-                'business' => $business,
-                'currency' => $sale->currency,
-            ])
-            ->header('Content-Type', 'text/html; charset=UTF-8');
+        return back()->with('success', 'Return '.$saleReturn->return_number.' recorded.');
     }
 
-    public function invoice(Sale $sale, TenantContext $tenant): HttpResponse
+    public function reprint(
+        Sale $sale,
+        SaleService $sales,
+    ): RedirectResponse {
+        $this->authorize('reprint', $sale);
+
+        $sales->recordReceiptReprint($sale, request()->user());
+
+        return redirect()->route('sales.receipt', ['sale' => $sale, 'reprint' => 1]);
+    }
+
+    public function receipt(Sale $sale, TenantContext $tenant, DocumentPrinter $printer): HttpResponse
     {
         $this->authorize('view', $sale);
 
         $business = $tenant->business();
         abort_unless($business, 403);
 
-        $sale->load([
-            'branch',
-            'cashier:id,name',
-            'customer:id,name,phone,email,address',
-            'items',
-            'payments',
-        ]);
+        return $printer->receipt($sale, $business);
+    }
 
-        $pdf = Pdf::loadView('sales.invoice-pdf', [
-            'sale' => $sale,
-            'business' => $business,
-            'currency' => $sale->currency,
-        ])->setPaper('a4');
+    public function invoice(Sale $sale, TenantContext $tenant, DocumentPrinter $printer): HttpResponse
+    {
+        $this->authorize('view', $sale);
 
-        return $pdf->download($sale->sale_number.'-invoice.pdf');
+        $business = $tenant->business();
+        abort_unless($business, 403);
+
+        return $printer->invoice($sale, $business);
     }
 
     /**
@@ -395,7 +569,32 @@ class SaleController extends Controller
             'barcode' => $product->barcode,
             'quantity' => $quantity,
             'selling_price_minor' => $product->selling_price,
+            'cost_price_minor' => $product->cost_price,
+            'min_selling_price_minor' => $product->min_selling_price,
+            'is_negotiable' => (bool) $product->is_negotiable,
             'selling_price_formatted' => Money::format($product->selling_price, $currency),
+            'min_selling_price_formatted' => Money::format($product->min_selling_price, $currency),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function heldPayload(Sale $sale, string $currency): array
+    {
+        return [
+            'id' => $sale->id,
+            'sale_number' => $sale->sale_number,
+            'held_label' => $sale->held_label,
+            'held_at' => $sale->held_at?->toIso8601String(),
+            'cashier_name' => $sale->cashier?->name,
+            'customer_id' => $sale->customer_id,
+            'customer_name' => $sale->customer_name,
+            'discount_amount_minor' => $sale->discount_amount,
+            'notes' => $sale->notes,
+            'item_count' => $sale->items->count(),
+            'total_minor' => $sale->total,
+            'total_formatted' => Money::format($sale->total, $currency),
         ];
     }
 
@@ -408,8 +607,8 @@ class SaleController extends Controller
             'id' => $sale->id,
             'sale_number' => $sale->sale_number,
             'status' => $sale->status->value,
-            'payment_method' => $sale->payment_method->value,
-            'payment_method_label' => $sale->payment_method->label(),
+            'payment_method' => $sale->payment_method?->value,
+            'payment_method_label' => $sale->payment_method?->label(),
             'branch_id' => $sale->branch_id,
             'branch_name' => $sale->branch?->name,
             'cashier_id' => $sale->cashier_id,
@@ -423,6 +622,10 @@ class SaleController extends Controller
             'discount_amount_formatted' => Money::format($sale->discount_amount, $currency),
             'total_minor' => $sale->total,
             'total_formatted' => Money::format($sale->total, $currency),
+            'amount_paid_minor' => $sale->amount_paid,
+            'amount_paid_formatted' => Money::format($sale->amount_paid, $currency),
+            'amount_due_minor' => $sale->amountDue(),
+            'amount_due_formatted' => Money::format($sale->amountDue(), $currency),
             'created_at' => $sale->created_at?->toIso8601String(),
             'voided_at' => $sale->voided_at?->toIso8601String(),
         ];
@@ -439,6 +642,11 @@ class SaleController extends Controller
             'notes' => $sale->notes,
             'void_reason' => $sale->void_reason,
             'voided_by_name' => $sale->voider?->name,
+            'approved_by_name' => $sale->approver?->name,
+            'cash_tendered_minor' => $sale->cash_tendered,
+            'cash_tendered_formatted' => Money::format($sale->cash_tendered, $currency),
+            'change_given_minor' => $sale->change_given,
+            'change_given_formatted' => Money::format($sale->change_given, $currency),
             'customer' => $sale->customer ? [
                 'id' => $sale->customer->id,
                 'name' => $sale->customer->name,
@@ -451,8 +659,14 @@ class SaleController extends Controller
                 'product_name' => $item->product_name,
                 'sku' => $item->sku,
                 'quantity' => $item->quantity,
+                'returned_quantity' => $item->returned_quantity,
+                'returnable_quantity' => $item->returnableQuantity(),
                 'unit_price_minor' => $item->unit_price,
                 'unit_price_formatted' => Money::format($item->unit_price, $currency),
+                'list_unit_price_minor' => $item->list_unit_price,
+                'list_unit_price_formatted' => Money::format($item->list_unit_price, $currency),
+                'unit_cost_minor' => $item->unit_cost,
+                'unit_cost_formatted' => Money::format($item->unit_cost, $currency),
                 'line_total_minor' => $item->line_total,
                 'line_total_formatted' => Money::format($item->line_total, $currency),
             ])->values(),
@@ -462,9 +676,20 @@ class SaleController extends Controller
                 'method_label' => $payment->method->label(),
                 'amount_minor' => $payment->amount,
                 'amount_formatted' => Money::format($payment->amount, $currency),
+                'tendered_amount_minor' => $payment->tendered_amount,
+                'change_amount_minor' => $payment->change_amount,
                 'reference' => $payment->reference,
+                'notes' => $payment->notes,
                 'received_by_name' => $payment->receiver?->name,
                 'created_at' => $payment->created_at?->toIso8601String(),
+            ])->values(),
+            'returns' => $sale->returns->map(fn ($saleReturn) => [
+                'id' => $saleReturn->id,
+                'return_number' => $saleReturn->return_number,
+                'total_formatted' => Money::format($saleReturn->total, $currency),
+                'refund_method' => $saleReturn->refund_method->value,
+                'reason' => $saleReturn->reason,
+                'created_at' => $saleReturn->created_at?->toIso8601String(),
             ])->values(),
             'movements' => $sale->stockMovements->map(fn ($movement) => [
                 'id' => $movement->id,
@@ -478,5 +703,19 @@ class SaleController extends Controller
                 'created_at' => $movement->created_at?->toIso8601String(),
             ])->values(),
         ];
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array{value: string, label: string}>
+     */
+    protected function paymentMethodOptions($business, FeatureFlagService $features)
+    {
+        return collect(PaymentMethod::cases())
+            ->reject(fn (PaymentMethod $method) => $method === PaymentMethod::Credit
+                && ! $features->hasFeature($business, Features::CUSTOMER_CREDIT))
+            ->map(fn (PaymentMethod $method) => [
+                'value' => $method->value,
+                'label' => $method->label(),
+            ])->values();
     }
 }

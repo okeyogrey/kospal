@@ -25,6 +25,8 @@ class Product extends Model
         'description',
         'cost_price',
         'selling_price',
+        'min_selling_price',
+        'is_negotiable',
         'reorder_level',
         'is_active',
     ];
@@ -34,6 +36,8 @@ class Product extends Model
         return [
             'cost_price' => 'integer',
             'selling_price' => 'integer',
+            'min_selling_price' => 'integer',
+            'is_negotiable' => 'boolean',
             'reorder_level' => 'integer',
             'is_active' => 'boolean',
         ];
@@ -59,6 +63,11 @@ class Product extends Model
     public function stockMovements(): HasMany
     {
         return $this->hasMany(StockMovement::class);
+    }
+
+    public function costHistories(): HasMany
+    {
+        return $this->hasMany(ProductCostHistory::class);
     }
 
     /**
@@ -87,5 +96,14 @@ class Product extends Model
                 ->orWhere('sku', 'like', $like)
                 ->orWhere('barcode', 'like', $like);
         });
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeBarcode(Builder $query, string $barcode): Builder
+    {
+        return $query->where('barcode', trim($barcode));
     }
 }

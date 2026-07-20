@@ -21,6 +21,9 @@ class CustomerService
      *     address?: string|null,
      *     notes?: string|null,
      *     is_active?: bool,
+     *     credit_enabled?: bool,
+     *     credit_limit?: int|null,
+     *     payment_terms_days?: int|null,
      * }  $data
      */
     public function create(Business $business, array $data, User $actor): Customer
@@ -33,6 +36,9 @@ class CustomerService
             'address' => $data['address'] ?? null,
             'notes' => $data['notes'] ?? null,
             'is_active' => $data['is_active'] ?? true,
+            'credit_enabled' => $data['credit_enabled'] ?? false,
+            'credit_limit' => $data['credit_limit'] ?? null,
+            'payment_terms_days' => $data['payment_terms_days'] ?? null,
         ]);
 
         $this->audit->log(
@@ -53,6 +59,9 @@ class CustomerService
      *     address?: string|null,
      *     notes?: string|null,
      *     is_active?: bool,
+     *     credit_enabled?: bool,
+     *     credit_limit?: int|null,
+     *     payment_terms_days?: int|null,
      * }  $data
      */
     public function update(Customer $customer, array $data, User $actor): Customer

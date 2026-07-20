@@ -63,7 +63,14 @@ return [
                 'core',
                 'advanced_reports',
                 'csv_export',
+                'csv_import',
+                'excel_import',
+                'excel_export',
+                'pdf_reports',
                 'stock_transfers',
+                'purchase_orders',
+                'stock_counts',
+                'customer_credit',
             ],
         ],
         Plan::Enterprise->value => [
@@ -75,9 +82,16 @@ return [
                 'core',
                 'advanced_reports',
                 'csv_export',
+                'csv_import',
+                'excel_import',
+                'excel_export',
+                'pdf_reports',
                 'stock_transfers',
+                'purchase_orders',
+                'stock_counts',
                 'audit_logs',
                 'consolidated_reports',
+                'customer_credit',
             ],
         ],
     ],
@@ -85,6 +99,8 @@ return [
     'default_plan' => Plan::Starter->value,
 
     'default_subscription_days' => (int) env('KOSPAL_DEFAULT_SUBSCRIPTION_DAYS', 30),
+
+    'default_trial_days' => (int) env('KOSPAL_LICENSE_TRIAL_DAYS', 30),
 
     'invitation_expires_hours' => 72,
 

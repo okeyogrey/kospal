@@ -2,17 +2,17 @@
 
 namespace App\Services;
 
+use App\Contracts\FeatureFlagService;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
-use App\Support\Plans\PlanLimitChecker;
 use Illuminate\Validation\ValidationException;
 
 class BranchService
 {
     public function __construct(
-        protected PlanLimitChecker $limits,
+        protected FeatureFlagService $limits,
         protected AuditLogger $audit,
     ) {}
 

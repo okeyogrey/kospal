@@ -17,6 +17,8 @@ it('redirects guests from shell pages to login', function (string $route) {
     'categories.index',
     'inventory.index',
     'inventory.low-stock',
+    'inventory.timeline',
+    'inventory.valuation',
     'sales.index',
     'sales.pos',
     'customers.index',
@@ -25,7 +27,7 @@ it('redirects guests from shell pages to login', function (string $route) {
     'reports.index',
     'staff.index',
     'branches.index',
-    'subscription.index',
+    'license.edit',
     'unauthorized',
 ]);
 
@@ -40,6 +42,8 @@ it('allows authenticated business members to visit shell pages', function (strin
     ['categories.index', 'categories/index'],
     ['inventory.index', 'inventory/index'],
     ['inventory.low-stock', 'inventory/low-stock'],
+    ['inventory.timeline', 'inventory/timeline'],
+    ['inventory.valuation', 'inventory/valuation'],
     ['sales.index', 'sales/index'],
     ['sales.pos', 'sales/pos'],
     ['customers.index', 'customers/index'],
@@ -48,7 +52,7 @@ it('allows authenticated business members to visit shell pages', function (strin
     ['reports.index', 'reports/index'],
     ['staff.index', 'staff/index'],
     ['branches.index', 'branches/index'],
-    ['subscription.index', 'subscription/index'],
+    ['license.edit', 'settings/license'],
     ['unauthorized', 'unauthorized'],
 ]);
 

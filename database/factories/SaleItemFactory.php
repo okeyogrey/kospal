@@ -27,7 +27,14 @@ class SaleItemFactory extends Factory
             'product_name' => fake()->words(2, true),
             'sku' => strtoupper(fake()->bothify('SKU-####')),
             'quantity' => $quantity,
+            'returned_quantity' => 0,
             'unit_price' => $unitPrice,
+            'list_unit_price' => $unitPrice,
+            'unit_cost' => 0,
+            'negotiated_difference' => 0,
+            'profit' => $quantity * $unitPrice,
+            'margin_bps' => 10000,
+            'manager_approved' => false,
             'line_total' => $quantity * $unitPrice,
         ];
     }

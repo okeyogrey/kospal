@@ -2,6 +2,7 @@ import { Breadcrumbs } from '@/components/breadcrumbs';
 import { BranchSelector } from '@/components/branch-selector';
 import { LanguageSelector } from '@/components/language-selector';
 import { NotificationBell } from '@/components/notification-bell';
+import { CashDrawerWidget } from '@/components/cash-drawer-widget';
 import { ShiftClockWidget } from '@/components/shift-clock-widget';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { BreadcrumbItem as BreadcrumbItemType } from '@/types';
@@ -21,6 +22,7 @@ export function AppSidebarHeader({
             </div>
             <div className="flex shrink-0 items-center gap-1 sm:gap-2">
                 <ShiftClockWidget />
+                <CashDrawerWidget />
                 <BranchSelector />
                 <LanguageSelector />
                 <NotificationBell />

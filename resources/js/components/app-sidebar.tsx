@@ -1,20 +1,29 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeftRight,
+    Banknote,
     Building2,
     ChartColumn,
+    ClipboardCheck,
     Clock,
+    Coins,
     ContactRound,
     CreditCard,
+    FileSpreadsheet,
+    FileText,
+    History,
     Landmark,
     LayoutGrid,
     Package,
+    PackageCheck,
     Receipt,
     Settings2,
+    ShoppingBasket,
     ShoppingCart,
     Tags,
     Truck,
     Users,
+    Wallet,
     Warehouse,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -36,6 +45,7 @@ import { index as branches } from '@/routes/branches';
 import { index as categories } from '@/routes/categories';
 import { index as expenses } from '@/routes/expenses';
 import { index as inventory } from '@/routes/inventory';
+import { index as productivity } from '@/routes/productivity';
 import { index as products } from '@/routes/products';
 import { index as reports } from '@/routes/reports';
 import { index as customers } from '@/routes/customers';
@@ -53,6 +63,9 @@ export function AppSidebar() {
     const { auth, navigation, workspace } = usePage().props;
     const features = workspace.limits?.features ?? [];
     const canTransfer = features.includes('stock_transfers');
+    const canPurchaseOrders = features.includes('purchase_orders');
+    const canCustomerCredit = features.includes('customer_credit');
+    const canStockCounts = features.includes('stock_counts');
     const isPlatformAdmin = auth.role === 'platform_super_admin';
 
     const platformItems: NavItem[] = [
@@ -95,6 +108,18 @@ export function AppSidebar() {
             href: inventory(),
             icon: Warehouse,
         },
+        {
+            key: 'inventory-timeline',
+            title: t('nav.inventory_timeline'),
+            href: '/inventory/timeline',
+            icon: History,
+        },
+        {
+            key: 'inventory-valuation',
+            title: t('nav.inventory_valuation'),
+            href: '/inventory/valuation',
+            icon: Coins,
+        },
         ...(canTransfer
             ? [
                   {
@@ -102,6 +127,44 @@ export function AppSidebar() {
                       title: t('nav.transfers'),
                       href: stockTransfers(),
                       icon: ArrowLeftRight,
+                  },
+              ]
+            : []),
+        ...(canPurchaseOrders
+            ? [
+                  {
+                      key: 'purchase-orders' as const,
+                      title: t('nav.purchase_orders'),
+                      href: '/purchase-orders',
+                      icon: ShoppingBasket,
+                  },
+                  {
+                      key: 'goods-received' as const,
+                      title: t('nav.goods_received'),
+                      href: '/goods-received',
+                      icon: PackageCheck,
+                  },
+                  {
+                      key: 'supplier-invoices' as const,
+                      title: t('nav.supplier_invoices'),
+                      href: '/supplier-invoices',
+                      icon: FileText,
+                  },
+                  {
+                      key: 'supplier-payments' as const,
+                      title: t('nav.supplier_payments'),
+                      href: '/supplier-payments',
+                      icon: Wallet,
+                  },
+              ]
+            : []),
+        ...(canStockCounts
+            ? [
+                  {
+                      key: 'stock-counts' as const,
+                      title: t('nav.stock_counts'),
+                      href: '/stock-counts',
+                      icon: ClipboardCheck,
                   },
               ]
             : []),
@@ -117,6 +180,16 @@ export function AppSidebar() {
             href: customers(),
             icon: ContactRound,
         },
+        ...(canCustomerCredit
+            ? [
+                  {
+                      key: 'customer-payments' as const,
+                      title: t('nav.customer_payments', 'Customer payments'),
+                      href: '/customer-payments',
+                      icon: Wallet,
+                  },
+              ]
+            : []),
         {
             key: 'expenses',
             title: t('nav.expenses'),
@@ -135,6 +208,12 @@ export function AppSidebar() {
             href: reports(),
             icon: ChartColumn,
         },
+        {
+            key: 'productivity',
+            title: t('nav.productivity', 'Productivity'),
+            href: productivity(),
+            icon: FileSpreadsheet,
+        },
     ];
 
     const organizationItems: NavItem[] = [
@@ -149,6 +228,12 @@ export function AppSidebar() {
             title: t('nav.shifts'),
             href: shifts(),
             icon: Clock,
+        },
+        {
+            key: 'cash-sessions',
+            title: t('nav.cash_sessions', 'Cash management'),
+            href: '/cash-sessions',
+            icon: Banknote,
         },
         {
             key: 'branches',

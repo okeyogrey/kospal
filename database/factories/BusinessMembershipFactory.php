@@ -21,6 +21,8 @@ class BusinessMembershipFactory extends Factory
             'business_id' => Business::factory(),
             'user_id' => User::factory(),
             'role' => BusinessRole::Cashier,
+            'negotiation_floor_percent' => 100,
+            'approval_pin' => null,
             'is_active' => true,
             'joined_at' => now(),
         ];

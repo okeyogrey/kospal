@@ -20,7 +20,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         PlatformSetting::setValue('support_email', ['value' => 'support@kospal.test']);
-        PlatformSetting::setValue('default_trial_days', ['value' => 14]);
+        PlatformSetting::setValue('default_trial_days', ['value' => 30]);
         PlatformSetting::setPaymentInstructions([
             'title' => 'How to pay for KOSPAL',
             'body' => "Transfer the plan fee using the bank or mobile money details below.\nKeep your receipt or confirmation code, then submit it on the Subscription page for manual approval.",

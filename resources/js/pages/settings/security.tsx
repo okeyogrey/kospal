@@ -7,11 +7,14 @@ import type { Props as ManageTwoFactorProps } from '@/components/manage-two-fact
 import ManageTwoFactor from '@/components/manage-two-factor';
 import PasswordInput from '@/components/password-input';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { edit } from '@/routes/security';
 
 type Props = {
     passwordRules: string;
+    canManageApprovalPin?: boolean;
+    hasApprovalPin?: boolean;
 } & ManageTwoFactorProps;
 
 export default function Security(props: Props) {
@@ -119,6 +122,90 @@ export default function Security(props: Props) {
                     )}
                 </Form>
             </div>
+
+            {props.canManageApprovalPin ? (
+                <div className="space-y-6">
+                    <Heading
+                        variant="small"
+                        title="Manager approval PIN"
+                        description={
+                            props.hasApprovalPin
+                                ? 'A PIN is set for approving cashier price overrides at the POS.'
+                                : 'Set a 4–8 digit PIN cashiers can use instead of your password.'
+                        }
+                    />
+
+                    <Form
+                        action="/settings/approval-pin"
+                        method="put"
+                        options={{ preserveScroll: true }}
+                        resetOnSuccess
+                        className="space-y-6"
+                    >
+                        {({ errors, processing }) => (
+                            <>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="pin">New PIN</Label>
+                                    <Input
+                                        id="pin"
+                                        name="pin"
+                                        inputMode="numeric"
+                                        autoComplete="off"
+                                        maxLength={8}
+                                        placeholder="4–8 digits"
+                                        className="mt-1 block w-full"
+                                    />
+                                    <InputError message={errors.pin} />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="pin_confirmation">
+                                        Confirm PIN
+                                    </Label>
+                                    <Input
+                                        id="pin_confirmation"
+                                        name="pin_confirmation"
+                                        inputMode="numeric"
+                                        autoComplete="off"
+                                        maxLength={8}
+                                        placeholder="Repeat PIN"
+                                        className="mt-1 block w-full"
+                                    />
+                                    <InputError
+                                        message={errors.pin_confirmation}
+                                    />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="pin_current_password">
+                                        Current password
+                                    </Label>
+                                    <PasswordInput
+                                        id="pin_current_password"
+                                        name="current_password"
+                                        className="mt-1 block w-full"
+                                        autoComplete="current-password"
+                                    />
+                                    <InputError
+                                        message={errors.current_password}
+                                    />
+                                </div>
+
+                                <label className="flex items-center gap-2 text-sm">
+                                    <input type="checkbox" name="clear_pin" value="1" />
+                                    Clear existing PIN
+                                </label>
+
+                                <div className="flex items-center gap-4">
+                                    <Button disabled={processing}>
+                                        Save PIN
+                                    </Button>
+                                </div>
+                            </>
+                        )}
+                    </Form>
+                </div>
+            ) : null}
 
             <ManageTwoFactor
                 canManageTwoFactor={props.canManageTwoFactor}

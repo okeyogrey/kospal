@@ -17,6 +17,10 @@ declare module '@inertiajs/core' {
     export interface InertiaConfig {
         sharedPageProps: {
             name: string;
+            deployment: {
+                mode: 'desktop' | 'web';
+                is_desktop: boolean;
+            };
             auth: Auth;
             locale: LocaleCode;
             locales: Record<LocaleCode, string>;

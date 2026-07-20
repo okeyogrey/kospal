@@ -20,6 +20,7 @@ import { index as staffIndex } from '@/routes/staff';
 type Membership = {
     id: number;
     role: string;
+    negotiation_floor_percent: number;
     is_active: boolean;
     user: { id: number; name: string; email: string };
     branch_ids: number[];
@@ -59,6 +60,7 @@ function MembershipEditor({
     const form = useForm({
         role: membership.role,
         branch_ids: membership.branch_ids,
+        negotiation_floor_percent: membership.negotiation_floor_percent ?? 100,
     });
 
     const toggleBranch = (branchId: number) => {
@@ -123,6 +125,29 @@ function MembershipEditor({
                 ) : null}
                 <InputError message={form.errors.branch_ids} />
             </div>
+            {form.data.role === 'cashier' ? (
+                <div className="grid gap-1">
+                    <Label className="text-xs">
+                        Price floor % (without PIN)
+                    </Label>
+                    <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={form.data.negotiation_floor_percent}
+                        onChange={(event) =>
+                            form.setData(
+                                'negotiation_floor_percent',
+                                Number(event.target.value || 100),
+                            )
+                        }
+                        className="h-9 w-24"
+                    />
+                    <InputError
+                        message={form.errors.negotiation_floor_percent}
+                    />
+                </div>
+            ) : null}
             <Button
                 type="submit"
                 size="sm"

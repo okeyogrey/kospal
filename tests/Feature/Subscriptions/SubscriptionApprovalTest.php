@@ -12,6 +12,10 @@ use Tests\Support\CreatesBusinesses;
 
 uses(RefreshDatabase::class, CreatesBusinesses::class);
 
+beforeEach(function () {
+    config(['deployment.mode' => 'web']);
+});
+
 it('lets platform admins approve a request and activate the plan', function () {
     ['owner' => $owner, 'business' => $business] = $this->createBusinessWithOwner([
         'plan' => Plan::Starter,

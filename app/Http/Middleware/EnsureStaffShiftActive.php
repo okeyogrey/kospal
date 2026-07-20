@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Sale;
+use App\Services\CashSessionService;
 use App\Services\StaffShiftService;
 use App\Support\Tenancy\TenantContext;
 use Closure;
@@ -14,6 +15,7 @@ class EnsureStaffShiftActive
     public function __construct(
         protected TenantContext $tenant,
         protected StaffShiftService $shifts,
+        protected CashSessionService $cashSessions,
     ) {}
 
     /**
@@ -39,6 +41,20 @@ class EnsureStaffShiftActive
         }
 
         if ($this->shifts->hasOpenShiftOnBranch($business, $user, $branch)) {
+            if ($request->routeIs('sales.store')
+                && ! $this->cashSessions->hasOpenSessionOnBranch($business, $user, $branch->id)) {
+                $message = 'Open the cash drawer before making sales.';
+
+                if ($request->expectsJson() && ! $request->header('X-Inertia')) {
+                    return response()->json(['message' => $message], 403);
+                }
+
+                return redirect()
+                    ->back()
+                    ->with('error', $message)
+                    ->withErrors(['cash_session' => $message]);
+            }
+
             return $next($request);
         }
 
@@ -66,7 +82,12 @@ class EnsureStaffShiftActive
             return $sale instanceof Sale && $user->can('void', $sale);
         }
 
-        if ($request->routeIs('inventory.receive-stock.store', 'inventory.adjustments.store')) {
+        if ($request->routeIs(
+            'inventory.receive-stock.store',
+            'inventory.adjustments.store',
+            'goods-received.post',
+            'stock-counts.complete',
+        )) {
             $role = $this->tenant->role();
 
             return $role !== null && $role->canManageCatalog();

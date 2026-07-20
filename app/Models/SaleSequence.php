@@ -16,12 +16,14 @@ class SaleSequence extends Model
     protected $fillable = [
         'business_id',
         'last_number',
+        'last_return_number',
     ];
 
     protected function casts(): array
     {
         return [
             'last_number' => 'integer',
+            'last_return_number' => 'integer',
         ];
     }
 }

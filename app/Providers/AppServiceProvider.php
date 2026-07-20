@@ -2,20 +2,29 @@
 
 namespace App\Providers;
 
+use App\Enums\ImportEntity;
 use App\Enums\ReportType;
 use App\Models\Attachment;
 use App\Models\Branch;
 use App\Models\BusinessMembership;
+use App\Models\CashSession;
 use App\Models\Category;
 use App\Models\Customer;
+use App\Models\CustomerPayment;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
+use App\Models\GoodsReceivedNote;
 use App\Models\Invitation;
 use App\Models\Product;
+use App\Models\PurchaseOrder;
 use App\Models\Sale;
 use App\Models\StaffShift;
+use App\Models\StockCount;
 use App\Models\StockTransfer;
 use App\Models\Supplier;
+use App\Models\SupplierInvoice;
+use App\Models\SupplierPayment;
+use App\Policies\ProductivityPolicy;
 use App\Policies\ReportPolicy;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -56,6 +65,7 @@ class AppServiceProvider extends ServiceProvider
     protected function configureAuthorization(): void
     {
         Gate::policy(ReportType::class, ReportPolicy::class);
+        Gate::policy(ImportEntity::class, ProductivityPolicy::class);
     }
 
     protected function configureRateLimiting(): void
@@ -180,6 +190,56 @@ class AppServiceProvider extends ServiceProvider
                 ->firstOrFail();
         });
 
+        Route::bind('purchaseOrder', function (string $value): PurchaseOrder {
+            $businessId = app(TenantContext::class)->businessId();
+            abort_unless($businessId, 404);
+
+            return PurchaseOrder::query()
+                ->forBusiness($businessId)
+                ->whereKey($value)
+                ->firstOrFail();
+        });
+
+        Route::bind('goodsReceivedNote', function (string $value): GoodsReceivedNote {
+            $businessId = app(TenantContext::class)->businessId();
+            abort_unless($businessId, 404);
+
+            return GoodsReceivedNote::query()
+                ->forBusiness($businessId)
+                ->whereKey($value)
+                ->firstOrFail();
+        });
+
+        Route::bind('supplierInvoice', function (string $value): SupplierInvoice {
+            $businessId = app(TenantContext::class)->businessId();
+            abort_unless($businessId, 404);
+
+            return SupplierInvoice::query()
+                ->forBusiness($businessId)
+                ->whereKey($value)
+                ->firstOrFail();
+        });
+
+        Route::bind('supplierPayment', function (string $value): SupplierPayment {
+            $businessId = app(TenantContext::class)->businessId();
+            abort_unless($businessId, 404);
+
+            return SupplierPayment::query()
+                ->forBusiness($businessId)
+                ->whereKey($value)
+                ->firstOrFail();
+        });
+
+        Route::bind('stockCount', function (string $value): StockCount {
+            $businessId = app(TenantContext::class)->businessId();
+            abort_unless($businessId, 404);
+
+            return StockCount::query()
+                ->forBusiness($businessId)
+                ->whereKey($value)
+                ->firstOrFail();
+        });
+
         Route::bind('sale', function (string $value): Sale {
             $businessId = app(TenantContext::class)->businessId();
             abort_unless($businessId, 404);
@@ -195,6 +255,16 @@ class AppServiceProvider extends ServiceProvider
             abort_unless($businessId, 404);
 
             return StaffShift::query()
+                ->forBusiness($businessId)
+                ->whereKey($value)
+                ->firstOrFail();
+        });
+
+        Route::bind('customerPayment', function (string $value): CustomerPayment {
+            $businessId = app(TenantContext::class)->businessId();
+            abort_unless($businessId, 404);
+
+            return CustomerPayment::query()
                 ->forBusiness($businessId)
                 ->whereKey($value)
                 ->firstOrFail();
@@ -225,6 +295,16 @@ class AppServiceProvider extends ServiceProvider
             abort_unless($businessId, 404);
 
             return Expense::query()
+                ->forBusiness($businessId)
+                ->whereKey($value)
+                ->firstOrFail();
+        });
+
+        Route::bind('cashSession', function (string $value): CashSession {
+            $businessId = app(TenantContext::class)->businessId();
+            abort_unless($businessId, 404);
+
+            return CashSession::query()
                 ->forBusiness($businessId)
                 ->whereKey($value)
                 ->firstOrFail();

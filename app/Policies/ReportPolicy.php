@@ -2,14 +2,17 @@
 
 namespace App\Policies;
 
+use App\Contracts\FeatureFlagService;
 use App\Enums\ReportType;
 use App\Models\User;
+use App\Support\FeatureFlags\Features;
 use App\Support\Tenancy\TenantContext;
 
 class ReportPolicy
 {
     public function __construct(
         protected TenantContext $tenant,
+        protected FeatureFlagService $features,
     ) {}
 
     public function viewAny(User $user): bool
@@ -55,7 +58,7 @@ class ReportPolicy
         }
 
         $business = $this->tenant->business();
-        if ($business === null || ! $business->plan->allowsCsvExport()) {
+        if ($business === null || ! $this->features->hasFeature($business, Features::CSV_EXPORT)) {
             return false;
         }
 
@@ -67,6 +70,28 @@ class ReportPolicy
             return false;
         }
 
-        return $type->isAvailableOn($business->plan);
+        return $type->isAvailableFor($business, $this->features);
+    }
+
+    public function exportPdf(User $user, ReportType|string $report): bool
+    {
+        if (! $this->viewAny($user)) {
+            return false;
+        }
+
+        $business = $this->tenant->business();
+        if ($business === null || ! $this->features->hasFeature($business, Features::PDF_REPORTS)) {
+            return false;
+        }
+
+        $type = $report instanceof ReportType
+            ? $report
+            : ReportType::tryFrom((string) $report);
+
+        if ($type === null || ! $type->supportsPdfExport()) {
+            return false;
+        }
+
+        return $type->isAvailableFor($business, $this->features);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Onboarding\StoreBusinessOnboardingRequest;
 use App\Services\BusinessOnboardingService;
+use App\Support\Deployment;
 use App\Support\Tenancy\ResolvesTenant;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -15,7 +16,7 @@ class OnboardingController extends Controller
     {
         $user = request()->user();
 
-        if ($user?->isPlatformSuperAdmin()) {
+        if ($user?->isPlatformSuperAdmin() && Deployment::isWeb()) {
             return redirect()->route('platform.subscription-requests.index');
         }
 

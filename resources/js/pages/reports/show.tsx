@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import { Download, Lock } from 'lucide-react';
+import { Download, FileText, Lock } from 'lucide-react';
 import { AnalyticsFilters } from '@/components/analytics/report-filters';
 import {
     ReportChartPanel,
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { useTranslations } from '@/hooks/use-translations';
 import {
     exportMethod as reportExport,
+    exportPdf as reportExportPdf,
     index as reportsIndex,
     show as reportShow,
 } from '@/routes/reports';
@@ -25,6 +26,7 @@ type ReportMeta = {
     min_plan: string;
     available: boolean;
     supports_csv: boolean;
+    supports_pdf?: boolean;
     supports_grain: boolean;
 };
 
@@ -64,6 +66,7 @@ export default function ReportShow({
     currency: string;
     permissions: {
         export: boolean;
+        export_pdf?: boolean;
         enhanced_exports: boolean;
     };
     upgrade: {
@@ -92,6 +95,16 @@ export default function ReportShow({
         chart.length > 0 ? chart : deriveChartFromRows(report.key, rows);
 
     const exportUrl = reportExport.url(report.key, {
+        query: {
+            branch_id: filters.branch_id ?? undefined,
+            date_from: filters.date_from,
+            date_to: filters.date_to,
+            grain: filters.grain,
+            include_voided: filters.include_voided ? '1' : undefined,
+        },
+    });
+
+    const exportPdfUrl = reportExportPdf.url(report.key, {
         query: {
             branch_id: filters.branch_id ?? undefined,
             date_from: filters.date_from,
@@ -133,6 +146,16 @@ export default function ReportShow({
                                 <a href={exportUrl}>
                                     <Download className="size-4" />
                                     {t('pages.reports.export_csv')}
+                                </a>
+                            </Button>
+                        ) : null}
+                        {permissions.export_pdf &&
+                        report.supports_pdf &&
+                        report.available ? (
+                            <Button variant="secondary" asChild>
+                                <a href={exportPdfUrl}>
+                                    <FileText className="size-4" />
+                                    {t('pages.reports.export_pdf')}
                                 </a>
                             </Button>
                         ) : null}

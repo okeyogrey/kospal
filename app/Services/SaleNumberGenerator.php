@@ -13,6 +13,28 @@ class SaleNumberGenerator
      */
     public function next(Business $business): string
     {
+        $sequence = $this->lockSequence($business);
+        $next = $sequence->last_number + 1;
+        $sequence->update(['last_number' => $next]);
+
+        return 'SAL-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Atomically allocate the next return number for a business.
+     * Must be called inside a database transaction.
+     */
+    public function nextReturn(Business $business): string
+    {
+        $sequence = $this->lockSequence($business);
+        $next = $sequence->last_return_number + 1;
+        $sequence->update(['last_return_number' => $next]);
+
+        return 'RET-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+    }
+
+    protected function lockSequence(Business $business): SaleSequence
+    {
         $sequence = SaleSequence::query()
             ->where('business_id', $business->id)
             ->lockForUpdate()
@@ -22,6 +44,7 @@ class SaleNumberGenerator
             SaleSequence::query()->create([
                 'business_id' => $business->id,
                 'last_number' => 0,
+                'last_return_number' => 0,
             ]);
 
             $sequence = SaleSequence::query()
@@ -30,10 +53,6 @@ class SaleNumberGenerator
                 ->firstOrFail();
         }
 
-        $next = $sequence->last_number + 1;
-
-        $sequence->update(['last_number' => $next]);
-
-        return 'SAL-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+        return $sequence;
     }
 }

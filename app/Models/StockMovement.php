@@ -27,6 +27,7 @@ class StockMovement extends Model
         'quantity_delta',
         'quantity_before',
         'quantity_after',
+        'unit_cost',
         'reason',
         'note',
         'reference_type',
@@ -43,6 +44,7 @@ class StockMovement extends Model
             'quantity_delta' => 'integer',
             'quantity_before' => 'integer',
             'quantity_after' => 'integer',
+            'unit_cost' => 'integer',
             'metadata' => 'array',
             'created_at' => 'datetime',
         ];

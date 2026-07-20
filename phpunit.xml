@@ -32,5 +32,9 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="KOSPAL_DEPLOYMENT_MODE" value="desktop"/>
+        <env name="KOSPAL_LICENSE_EDITION" value="enterprise"/>
+        <env name="KOSPAL_LICENSE_TRIAL_DAYS" value="30"/>
+        <env name="KOSPAL_LICENSE_SECRET" value="testing-license-secret"/>
     </php>
 </phpunit>

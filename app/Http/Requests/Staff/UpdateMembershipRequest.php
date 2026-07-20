@@ -32,6 +32,7 @@ class UpdateMembershipRequest extends FormRequest
             'role' => ['required', 'string', Rule::in($allowedRoles)],
             'branch_ids' => ['nullable', 'array'],
             'branch_ids.*' => ['integer'],
+            'negotiation_floor_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
         ];
     }
 }

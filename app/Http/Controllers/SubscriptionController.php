@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\FeatureFlagService;
+use App\Contracts\LicensingService;
 use App\Enums\SubscriptionRequestStatus;
 use App\Http\Requests\Subscriptions\StoreSubscriptionRequestRequest;
 use App\Models\PlatformSetting;
 use App\Models\SubscriptionRequest;
 use App\Services\SubscriptionService;
-use App\Support\Plans\PlanLimitChecker;
+use App\Support\Deployment;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -15,11 +17,20 @@ use Inertia\Response;
 
 class SubscriptionController extends Controller
 {
-    public function index(TenantContext $tenant, PlanLimitChecker $limits): Response
-    {
+    public function index(
+        TenantContext $tenant,
+        FeatureFlagService $features,
+        LicensingService $licensing,
+    ): Response|RedirectResponse {
+        if (Deployment::isDesktop()) {
+            return redirect()->route('license.edit');
+        }
+
         $business = $tenant->business();
         abort_unless($business, 403);
         $this->authorize('manageSubscription', $business);
+
+        $licensing->refreshStatus($business);
 
         $requests = SubscriptionRequest::query()
             ->forBusiness($business)
@@ -53,21 +64,16 @@ class SubscriptionController extends Controller
             ->all();
 
         return Inertia::render('subscription/index', [
+            'mode' => Deployment::mode(),
             'business' => [
                 'id' => $business->id,
                 'name' => $business->name,
-                'plan' => $business->plan->value,
-                'subscription_status' => $business->subscription_status->value,
+                'plan' => $licensing->plan($business)->value,
+                'subscription_status' => $licensing->status($business)->value,
                 'subscription_ends_at' => $business->subscription_ends_at?->toDateString(),
-                'allows_write_access' => $business->allowsWriteAccess(),
+                'allows_write_access' => $licensing->allowsWriteAccess($business),
             ],
-            'limits' => [
-                'max_branches' => $limits->maxBranches($business),
-                'active_branches' => $limits->activeBranchCount($business),
-                'max_staff' => $limits->maxStaff($business),
-                'staff_seats' => $limits->staffSeatCount($business),
-                'features' => $business->plan->config()['features'],
-            ],
+            'limits' => $features->limitsPayload($business),
             'plans' => $plans,
             'payment_instructions' => PlatformSetting::paymentInstructions(),
             'requests' => $requests,
@@ -83,6 +89,8 @@ class SubscriptionController extends Controller
         TenantContext $tenant,
         SubscriptionService $subscriptions,
     ): RedirectResponse {
+        abort_if(Deployment::isDesktop(), 404);
+
         $business = $tenant->business();
         abort_unless($business, 403);
 

@@ -57,6 +57,8 @@ class StoreProductRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:5000'],
             'cost_price' => ['required', 'numeric', 'min:0'],
             'selling_price' => ['required', 'numeric', 'min:0'],
+            'min_selling_price' => ['nullable', 'numeric', 'min:0'],
+            'is_negotiable' => ['sometimes', 'boolean'],
             'reorder_level' => ['nullable', 'integer', 'min:0', 'max:1000000'],
             'is_active' => ['sometimes', 'boolean'],
             'supplier_ids' => ['sometimes', 'array'],
@@ -65,6 +67,21 @@ class StoreProductRequest extends FormRequest
                 Rule::exists('suppliers', 'id')->where('business_id', $businessId),
             ],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator): void {
+            $selling = $this->input('selling_price');
+            $min = $this->input('min_selling_price');
+
+            if ($selling !== null && $min !== null && $min !== '' && (float) $min > (float) $selling) {
+                $validator->errors()->add(
+                    'min_selling_price',
+                    'Minimum selling price cannot exceed the suggested selling price.',
+                );
+            }
+        });
     }
 
     /**
@@ -78,9 +95,16 @@ class StoreProductRequest extends FormRequest
             return $data;
         }
 
+        $money = $this->moneyFieldsToMinor(['cost_price', 'selling_price', 'min_selling_price']);
+
+        if (! array_key_exists('min_selling_price', $money) || $money['min_selling_price'] === null) {
+            $money['min_selling_price'] = $money['cost_price'] ?? 0;
+        }
+
         return [
             ...$data,
-            ...$this->moneyFieldsToMinor(['cost_price', 'selling_price']),
+            ...$money,
+            'is_negotiable' => (bool) ($data['is_negotiable'] ?? true),
             'reorder_level' => (int) ($data['reorder_level'] ?? 0),
             'supplier_ids' => array_values(array_map('intval', $data['supplier_ids'] ?? [])),
         ];

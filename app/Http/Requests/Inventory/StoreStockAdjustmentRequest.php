@@ -44,6 +44,7 @@ class StoreStockAdjustmentRequest extends FormRequest
                 Rule::exists('products', 'id')->where('business_id', $businessId),
             ],
             'quantity' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'direction' => ['required', 'string', Rule::in(['increase', 'decrease'])],
             'reason' => ['required', Rule::enum(StockAdjustmentReason::class)],
             'note' => ['required', 'string', 'min:3', 'max:1000'],
         ];

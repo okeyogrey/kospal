@@ -43,6 +43,7 @@ class StoreStockReceiptRequest extends FormRequest
                 Rule::exists('products', 'id')->where('business_id', $businessId),
             ],
             'quantity' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'unit_cost' => ['nullable', 'integer', 'min:0'],
             'note' => ['nullable', 'string', 'max:1000'],
         ];
     }

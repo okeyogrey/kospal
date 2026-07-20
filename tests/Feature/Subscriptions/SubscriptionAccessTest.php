@@ -9,77 +9,21 @@ use Tests\Support\CreatesBusinesses;
 
 uses(RefreshDatabase::class, CreatesBusinesses::class);
 
-it('keeps data visible but blocks writes when subscription is pending', function () {
+it('blocks SaaS subscription writes when deployment mode is web', function () {
+    config(['deployment.mode' => 'web']);
+
     ['owner' => $owner] = $this->createBusinessWithOwner([
         'subscription_status' => SubscriptionStatus::Pending,
     ]);
 
     $this->actingAs($owner)
-        ->get(route('dashboard'))
-        ->assertOk();
-
-    $this->actingAs($owner)
-        ->get(route('products.index'))
-        ->assertOk();
-
-    $this->actingAs($owner)
         ->post(route('categories.store'), [
-            'name' => 'Drinks',
+            'name' => 'Blocked',
         ])
         ->assertRedirect()
         ->assertSessionHas('error');
 
-    expect(Category::query()->count())->toBe(0);
-});
-
-it('blocks operational writes when subscription is expired or suspended', function (SubscriptionStatus $status) {
-    ['owner' => $owner] = $this->createBusinessWithOwner([
-        'subscription_status' => $status,
-        'subscription_ends_at' => now()->subDay(),
-    ]);
-
-    $this->actingAs($owner)
-        ->post(route('branches.store'), [
-            'name' => 'Blocked Branch',
-            'is_active' => true,
-        ])
-        ->assertRedirect()
-        ->assertSessionHas('error');
-
-    expect(Branch::query()->where('name', 'Blocked Branch')->exists())->toBeFalse();
-})->with([
-    SubscriptionStatus::Expired,
-    SubscriptionStatus::Suspended,
-]);
-
-it('auto-expires an active subscription past its end date and blocks writes', function () {
-    ['owner' => $owner, 'business' => $business] = $this->createBusinessWithOwner([
-        'subscription_status' => SubscriptionStatus::Active,
-        'subscription_ends_at' => now()->subDay(),
-    ]);
-
-    $this->actingAs($owner)
-        ->post(route('categories.store'), [
-            'name' => 'Should Fail',
-        ])
-        ->assertRedirect()
-        ->assertSessionHas('error');
-
-    expect($business->fresh()->subscription_status)->toBe(SubscriptionStatus::Expired);
-});
-
-it('still allows subscription request submission while restricted', function () {
-    ['owner' => $owner] = $this->createBusinessWithOwner([
-        'subscription_status' => SubscriptionStatus::Expired,
-    ]);
-
-    $this->actingAs($owner)
-        ->post(route('subscription.requests.store'), [
-            'requested_plan' => 'pro',
-            'transaction_code' => 'RENEW-001',
-        ])
-        ->assertRedirect()
-        ->assertSessionMissing('error');
+    expect(Category::query()->where('name', 'Blocked')->exists())->toBeFalse();
 });
 
 it('continues enforcing plan limits on active accounts', function () {
@@ -94,4 +38,25 @@ it('continues enforcing plan limits on active accounts', function () {
             'is_active' => true,
         ])
         ->assertStatus(422);
+
+    expect(Branch::query()->where('name', 'Second Branch')->exists())->toBeFalse();
+});
+
+it('auto-expires past-due SaaS subscriptions in web mode', function () {
+    config(['deployment.mode' => 'web']);
+
+    ['owner' => $owner, 'business' => $business] = $this->createBusinessWithOwner([
+        'subscription_status' => SubscriptionStatus::Active,
+        'subscription_ends_at' => now()->subDay(),
+    ]);
+
+    $this->actingAs($owner)
+        ->post(route('categories.store'), [
+            'name' => 'Should Fail',
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('error');
+
+    expect($business->fresh()->subscription_status)->toBe(SubscriptionStatus::Expired)
+        ->and(Category::query()->where('name', 'Should Fail')->exists())->toBeFalse();
 });

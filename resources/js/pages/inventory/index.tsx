@@ -41,6 +41,8 @@ type Paginated<T> = {
 type AdjustmentReason = {
     value: string;
     label: string;
+    allows_increase: boolean;
+    allows_decrease: boolean;
 };
 
 function stockHealthPercent(quantity: number, reorderLevel: number): number {
@@ -84,6 +86,7 @@ export default function InventoryIndex({
         branch_id: String(filters.branch_id ?? branches[0]?.id ?? ''),
         product_id: '',
         quantity: '',
+        unit_cost: '',
         note: '',
     });
 
@@ -91,9 +94,16 @@ export default function InventoryIndex({
         branch_id: String(filters.branch_id ?? branches[0]?.id ?? ''),
         product_id: '',
         quantity: '',
+        direction: 'decrease',
         reason: 'loss',
         note: '',
     });
+
+    const reasonsForDirection = adjustmentReasons.filter((reason) =>
+        adjustForm.data.direction === 'increase'
+            ? reason.allows_increase
+            : reason.allows_decrease,
+    );
 
     const statusChart = [
         { label: 'In stock', value: summary.in_stock_count },
@@ -317,6 +327,7 @@ export default function InventoryIndex({
                                         onSuccess: () =>
                                             receiveForm.reset(
                                                 'quantity',
+                                                'unit_cost',
                                                 'note',
                                             ),
                                     });
@@ -380,6 +391,27 @@ export default function InventoryIndex({
                                     />
                                 </div>
                                 <div className="grid gap-2">
+                                    <Label htmlFor="receive_unit_cost">
+                                        Unit cost (optional)
+                                    </Label>
+                                    <Input
+                                        id="receive_unit_cost"
+                                        type="number"
+                                        min={0}
+                                        placeholder="Uses current product cost if blank"
+                                        value={receiveForm.data.unit_cost}
+                                        onChange={(e) =>
+                                            receiveForm.setData(
+                                                'unit_cost',
+                                                e.target.value,
+                                            )
+                                        }
+                                    />
+                                    <InputError
+                                        message={receiveForm.errors.unit_cost}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
                                     <Label htmlFor="receive_note">Note</Label>
                                     <Input
                                         id="receive_note"
@@ -403,7 +435,9 @@ export default function InventoryIndex({
                         </section>
 
                         <section className="rounded-2xl border border-border/80 bg-card/80 p-4">
-                            <h2 className="mb-3 font-medium">Record loss</h2>
+                            <h2 className="mb-3 font-medium">
+                                Adjust stock
+                            </h2>
                             <form
                                 className="space-y-3"
                                 onSubmit={(event) => {
@@ -455,8 +489,54 @@ export default function InventoryIndex({
                                     required
                                 />
                                 <div className="grid gap-2">
+                                    <Label htmlFor="adjust_direction">
+                                        Direction
+                                    </Label>
+                                    <select
+                                        id="adjust_direction"
+                                        value={adjustForm.data.direction}
+                                        onChange={(e) => {
+                                            const direction = e.target.value;
+                                            const nextReasons =
+                                                adjustmentReasons.filter(
+                                                    (reason) =>
+                                                        direction ===
+                                                        'increase'
+                                                            ? reason.allows_increase
+                                                            : reason.allows_decrease,
+                                                );
+
+                                            adjustForm.setData({
+                                                ...adjustForm.data,
+                                                direction,
+                                                reason:
+                                                    nextReasons.find(
+                                                        (reason) =>
+                                                            reason.value ===
+                                                            adjustForm.data
+                                                                .reason,
+                                                    )?.value ??
+                                                    nextReasons[0]?.value ??
+                                                    '',
+                                            });
+                                        }}
+                                        className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                                        required
+                                    >
+                                        <option value="increase">
+                                            Increase
+                                        </option>
+                                        <option value="decrease">
+                                            Decrease
+                                        </option>
+                                    </select>
+                                    <InputError
+                                        message={adjustForm.errors.direction}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
                                     <Label htmlFor="adjust_quantity">
-                                        Quantity lost
+                                        Quantity
                                     </Label>
                                     <Input
                                         id="adjust_quantity"
@@ -489,7 +569,7 @@ export default function InventoryIndex({
                                         className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
                                         required
                                     >
-                                        {adjustmentReasons.map((reason) => (
+                                        {reasonsForDirection.map((reason) => (
                                             <option
                                                 key={reason.value}
                                                 value={reason.value}
@@ -524,7 +604,7 @@ export default function InventoryIndex({
                                     className="w-full"
                                     disabled={adjustForm.processing}
                                 >
-                                    Record loss
+                                    Save adjustment
                                 </Button>
                             </form>
                         </section>

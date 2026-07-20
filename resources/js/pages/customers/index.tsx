@@ -1,4 +1,4 @@
-import { Form, Head, router, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import { ContactRound } from 'lucide-react';
 import { useState } from 'react';
 import InputError from '@/components/input-error';
@@ -12,6 +12,7 @@ import { useTranslations } from '@/hooks/use-translations';
 import {
     destroy,
     index as customersIndex,
+    show as customersShow,
     store,
     update,
 } from '@/routes/customers';
@@ -25,6 +26,12 @@ type CustomerRow = {
     notes: string | null;
     is_active: boolean;
     sales_count: number;
+    credit_enabled?: boolean;
+    payment_terms_days?: number | null;
+    outstanding_balance?: number;
+    outstanding_balance_formatted?: string;
+    credit_limit?: number | null;
+    credit_limit_formatted?: string | null;
 };
 
 type Paginated<T> = {
@@ -36,10 +43,17 @@ export default function CustomersIndex({
     customers,
     filters,
     permissions,
+    hasCreditFeature,
 }: {
     customers: Paginated<CustomerRow>;
     filters: { search: string; status: string | null };
-    permissions: { create: boolean; manage: boolean };
+    permissions: {
+        create: boolean;
+        manage: boolean;
+        recordPayments: boolean;
+    };
+    hasCreditFeature: boolean;
+    currency: string;
 }) {
     const { t } = useTranslations();
     const [editingId, setEditingId] = useState<number | null>(null);
@@ -50,6 +64,9 @@ export default function CustomersIndex({
         address: '',
         notes: '',
         is_active: true,
+        credit_enabled: false,
+        credit_limit: '',
+        payment_terms_days: '',
     });
     const editForm = useForm({
         name: '',
@@ -58,6 +75,9 @@ export default function CustomersIndex({
         address: '',
         notes: '',
         is_active: true,
+        credit_enabled: false,
+        credit_limit: '',
+        payment_terms_days: '',
     });
 
     const startEdit = (customer: CustomerRow) => {
@@ -69,6 +89,15 @@ export default function CustomersIndex({
             address: customer.address ?? '',
             notes: customer.notes ?? '',
             is_active: customer.is_active,
+            credit_enabled: customer.credit_enabled ?? false,
+            credit_limit:
+                customer.credit_limit != null
+                    ? String(customer.credit_limit)
+                    : '',
+            payment_terms_days:
+                customer.payment_terms_days != null
+                    ? String(customer.payment_terms_days)
+                    : '',
         });
         editForm.clearErrors();
     };
@@ -85,50 +114,65 @@ export default function CustomersIndex({
                         <p className="text-sm text-muted-foreground">
                             {t(
                                 'pages.customers.description',
-                                'Save returning customer contacts for faster checkout.',
+                                'Manage customer contacts, credit limits, and account balances.',
                             )}
                         </p>
                     </div>
-                    <form
-                        className="flex gap-2"
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            const data = new FormData(event.currentTarget);
-                            router.get(
-                                customersIndex.url({
-                                    query: {
-                                        search: String(
-                                            data.get('search') ?? '',
-                                        ),
-                                        status:
-                                            String(data.get('status') ?? '') ||
-                                            undefined,
-                                    },
-                                }),
-                                {},
-                                { preserveState: true },
-                            );
-                        }}
-                    >
-                        <Input
-                            name="search"
-                            placeholder="Search customers"
-                            defaultValue={filters.search}
-                            className="w-48 sm:w-64"
-                        />
-                        <select
-                            name="status"
-                            defaultValue={filters.status ?? ''}
-                            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                    <div className="flex flex-wrap gap-2">
+                        {permissions.recordPayments && hasCreditFeature ? (
+                            <Button variant="outline" asChild>
+                                <Link href="/customer-payments/create">
+                                    Record payment
+                                </Link>
+                            </Button>
+                        ) : null}
+                        <form
+                            className="flex gap-2"
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                const data = new FormData(event.currentTarget);
+                                router.get(
+                                    customersIndex.url({
+                                        query: {
+                                            search: String(
+                                                data.get('search') ?? '',
+                                            ),
+                                            status:
+                                                String(
+                                                    data.get('status') ?? '',
+                                                ) || undefined,
+                                        },
+                                    }),
+                                    {},
+                                    { preserveState: true },
+                                );
+                            }}
                         >
-                            <option value="">All</option>
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
-                        <Button type="submit" variant="outline">
-                            Search
-                        </Button>
-                    </form>
+                            <Input
+                                name="search"
+                                placeholder="Search customers"
+                                defaultValue={filters.search}
+                                className="w-48 sm:w-64"
+                            />
+                            <select
+                                name="status"
+                                defaultValue={filters.status ?? ''}
+                                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                            >
+                                <option value="">All</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                                {hasCreditFeature ? (
+                                    <option value="with_balance">
+                                        With credit
+                                    </option>
+                                ) : null}
+                            </select>
+                            <Button type="submit" variant="outline">
+                                Search
+                            </Button>
+                        </form>
+                    </div>
                 </div>
 
                 <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
@@ -148,7 +192,7 @@ export default function CustomersIndex({
                         ) : (
                             <>
                                 <div className="overflow-x-auto">
-                                    <table className="w-full min-w-[40rem] text-sm">
+                                    <table className="w-full min-w-[48rem] text-sm">
                                         <thead className="bg-muted/40 text-left">
                                             <tr>
                                                 <th className="px-4 py-3 font-medium">
@@ -160,6 +204,11 @@ export default function CustomersIndex({
                                                 <th className="px-4 py-3 font-medium">
                                                     Sales
                                                 </th>
+                                                {hasCreditFeature ? (
+                                                    <th className="px-4 py-3 font-medium">
+                                                        Balance
+                                                    </th>
+                                                ) : null}
                                                 <th className="px-4 py-3 font-medium">
                                                     Status
                                                 </th>
@@ -175,7 +224,14 @@ export default function CustomersIndex({
                                                     className="border-t border-border/70"
                                                 >
                                                     <td className="px-4 py-3 font-medium">
-                                                        {customer.name}
+                                                        <Link
+                                                            href={customersShow.url(
+                                                                customer.id,
+                                                            )}
+                                                            className="hover:underline"
+                                                        >
+                                                            {customer.name}
+                                                        </Link>
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <div>
@@ -190,6 +246,30 @@ export default function CustomersIndex({
                                                     <td className="px-4 py-3">
                                                         {customer.sales_count}
                                                     </td>
+                                                    {hasCreditFeature ? (
+                                                        <td className="px-4 py-3">
+                                                            {customer.credit_enabled ? (
+                                                                <div>
+                                                                    <div className="font-medium tabular-nums">
+                                                                        {customer.outstanding_balance_formatted ??
+                                                                            '—'}
+                                                                    </div>
+                                                                    {customer.credit_limit_formatted ? (
+                                                                        <div className="text-xs text-muted-foreground">
+                                                                            Limit{' '}
+                                                                            {
+                                                                                customer.credit_limit_formatted
+                                                                            }
+                                                                        </div>
+                                                                    ) : null}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-muted-foreground">
+                                                                    —
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                    ) : null}
                                                     <td className="px-4 py-3">
                                                         <Badge
                                                             variant={
@@ -205,12 +285,26 @@ export default function CustomersIndex({
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <div className="flex gap-2">
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                asChild
+                                                            >
+                                                                <Link
+                                                                    href={customersShow.url(
+                                                                        customer.id,
+                                                                    )}
+                                                                >
+                                                                    View
+                                                                </Link>
+                                                            </Button>
                                                             {permissions.manage ? (
                                                                 <>
                                                                     <Button
                                                                         type="button"
                                                                         size="sm"
-                                                                        variant="outline"
+                                                                        variant="ghost"
                                                                         onClick={() =>
                                                                             startEdit(
                                                                                 customer,
@@ -219,23 +313,26 @@ export default function CustomersIndex({
                                                                     >
                                                                         Edit
                                                                     </Button>
-                                                                    <Form
-                                                                        {...destroy.form(
-                                                                            customer.id,
-                                                                        )}
-                                                                        options={{
-                                                                            preserveScroll: true,
-                                                                        }}
+                                                                    <form
                                                                         onSubmit={(
                                                                             event,
                                                                         ) => {
+                                                                            event.preventDefault();
                                                                             if (
                                                                                 !confirm(
                                                                                     'Delete this customer?',
                                                                                 )
                                                                             ) {
-                                                                                event.preventDefault();
+                                                                                return;
                                                                             }
+                                                                            router.delete(
+                                                                                destroy.url(
+                                                                                    customer.id,
+                                                                                ),
+                                                                                {
+                                                                                    preserveScroll: true,
+                                                                                },
+                                                                            );
                                                                         }}
                                                                     >
                                                                         <Button
@@ -245,13 +342,9 @@ export default function CustomersIndex({
                                                                         >
                                                                             Delete
                                                                         </Button>
-                                                                    </Form>
+                                                                    </form>
                                                                 </>
-                                                            ) : (
-                                                                <span className="text-xs text-muted-foreground">
-                                                                    View only
-                                                                </span>
-                                                            )}
+                                                            ) : null}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -270,6 +363,19 @@ export default function CustomersIndex({
                                 className="space-y-3 rounded-2xl border border-border/80 p-4"
                                 onSubmit={(event) => {
                                     event.preventDefault();
+                                    createForm.transform((data) => ({
+                                        ...data,
+                                        credit_limit:
+                                            data.credit_limit !== ''
+                                                ? Number(data.credit_limit)
+                                                : null,
+                                        payment_terms_days:
+                                            data.payment_terms_days !== ''
+                                                ? Number(
+                                                      data.payment_terms_days,
+                                                  )
+                                                : null,
+                                    }));
                                     createForm.post(store.url(), {
                                         preserveScroll: true,
                                         onSuccess: () => createForm.reset(),
@@ -321,19 +427,74 @@ export default function CustomersIndex({
                                         }
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="address">Address</Label>
-                                    <Input
-                                        id="address"
-                                        value={createForm.data.address}
-                                        onChange={(event) =>
-                                            createForm.setData(
-                                                'address',
-                                                event.target.value,
-                                            )
-                                        }
-                                    />
-                                </div>
+                                {hasCreditFeature ? (
+                                    <>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={
+                                                    createForm.data
+                                                        .credit_enabled
+                                                }
+                                                onChange={(event) =>
+                                                    createForm.setData(
+                                                        'credit_enabled',
+                                                        event.target.checked,
+                                                    )
+                                                }
+                                            />
+                                            Enable credit
+                                        </label>
+                                        {createForm.data.credit_enabled ? (
+                                            <>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="credit_limit">
+                                                        Credit limit (minor
+                                                        units)
+                                                    </Label>
+                                                    <Input
+                                                        id="credit_limit"
+                                                        type="number"
+                                                        min={0}
+                                                        value={
+                                                            createForm.data
+                                                                .credit_limit
+                                                        }
+                                                        onChange={(event) =>
+                                                            createForm.setData(
+                                                                'credit_limit',
+                                                                event.target
+                                                                    .value,
+                                                            )
+                                                        }
+                                                        placeholder="Leave empty for unlimited"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="payment_terms_days">
+                                                        Payment terms (days)
+                                                    </Label>
+                                                    <Input
+                                                        id="payment_terms_days"
+                                                        type="number"
+                                                        min={0}
+                                                        value={
+                                                            createForm.data
+                                                                .payment_terms_days
+                                                        }
+                                                        onChange={(event) =>
+                                                            createForm.setData(
+                                                                'payment_terms_days',
+                                                                event.target
+                                                                    .value,
+                                                            )
+                                                        }
+                                                    />
+                                                </div>
+                                            </>
+                                        ) : null}
+                                    </>
+                                ) : null}
                                 <Button
                                     type="submit"
                                     className="w-full"
@@ -349,6 +510,19 @@ export default function CustomersIndex({
                                 className="space-y-3 rounded-2xl border border-border/80 p-4"
                                 onSubmit={(event) => {
                                     event.preventDefault();
+                                    editForm.transform((data) => ({
+                                        ...data,
+                                        credit_limit:
+                                            data.credit_limit !== ''
+                                                ? Number(data.credit_limit)
+                                                : null,
+                                        payment_terms_days:
+                                            data.payment_terms_days !== ''
+                                                ? Number(
+                                                      data.payment_terms_days,
+                                                  )
+                                                : null,
+                                    }));
                                     editForm.patch(update.url(editingId), {
                                         preserveScroll: true,
                                         onSuccess: () => setEditingId(null),
@@ -374,32 +548,6 @@ export default function CustomersIndex({
                                         message={editForm.errors.name}
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit_phone">Phone</Label>
-                                    <Input
-                                        id="edit_phone"
-                                        value={editForm.data.phone}
-                                        onChange={(event) =>
-                                            editForm.setData(
-                                                'phone',
-                                                event.target.value,
-                                            )
-                                        }
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="edit_email">Email</Label>
-                                    <Input
-                                        id="edit_email"
-                                        value={editForm.data.email}
-                                        onChange={(event) =>
-                                            editForm.setData(
-                                                'email',
-                                                event.target.value,
-                                            )
-                                        }
-                                    />
-                                </div>
                                 <label className="flex items-center gap-2 text-sm">
                                     <input
                                         type="checkbox"
@@ -413,6 +561,47 @@ export default function CustomersIndex({
                                     />
                                     Active
                                 </label>
+                                {hasCreditFeature ? (
+                                    <>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={
+                                                    editForm.data.credit_enabled
+                                                }
+                                                onChange={(event) =>
+                                                    editForm.setData(
+                                                        'credit_enabled',
+                                                        event.target.checked,
+                                                    )
+                                                }
+                                            />
+                                            Enable credit
+                                        </label>
+                                        {editForm.data.credit_enabled ? (
+                                            <div className="space-y-2">
+                                                <Label htmlFor="edit_credit_limit">
+                                                    Credit limit (minor units)
+                                                </Label>
+                                                <Input
+                                                    id="edit_credit_limit"
+                                                    type="number"
+                                                    min={0}
+                                                    value={
+                                                        editForm.data
+                                                            .credit_limit
+                                                    }
+                                                    onChange={(event) =>
+                                                        editForm.setData(
+                                                            'credit_limit',
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                />
+                                            </div>
+                                        ) : null}
+                                    </>
+                                ) : null}
                                 <div className="flex gap-2">
                                     <Button
                                         type="button"

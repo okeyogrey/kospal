@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Contracts\FeatureFlagService;
 use App\Enums\StockMovementType;
 use App\Enums\StockTransferStatus;
 use App\Models\Branch;
@@ -12,7 +13,7 @@ use App\Models\StockTransfer;
 use App\Models\StockTransferItem;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
-use App\Support\Plans\PlanLimitChecker;
+use App\Support\FeatureFlags\Features;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -20,7 +21,7 @@ class StockTransferService
 {
     public function __construct(
         protected InventoryService $inventory,
-        protected PlanLimitChecker $limits,
+        protected FeatureFlagService $limits,
         protected AuditLogger $audit,
     ) {}
 
@@ -244,7 +245,7 @@ class StockTransferService
 
     protected function assertFeature(Business $business): void
     {
-        $this->limits->assertHasFeature($business, 'stock_transfers');
+        $this->limits->assertHasFeature($business, Features::STOCK_TRANSFERS);
     }
 
     protected function assertStatusTransition(StockTransfer $transfer, StockTransferStatus $next): void

@@ -30,13 +30,23 @@ final class Navigation
             'categories' => $catalogRoles,
             'inventory' => $catalogRoles,
             'transfers' => $catalogRoles,
+            'purchase-orders' => $catalogRoles,
+            'goods-received' => $catalogRoles,
+            'supplier-invoices' => $catalogRoles,
+            'supplier-payments' => $financeRoles,
+            'stock-counts' => $catalogRoles,
+            'inventory-timeline' => $catalogRoles,
+            'inventory-valuation' => $catalogRoles,
             'sales' => ['owner', 'manager', 'cashier'],
             'customers' => ['owner', 'manager', 'cashier'],
+            'customer-payments' => $financeRoles,
             'expenses' => $expenseRoles,
             'suppliers' => $catalogRoles,
             'reports' => $financeRoles,
+            'productivity' => $financeRoles,
             'staff' => $adminRoles,
             'shifts' => $ownerOnly,
+            'cash-sessions' => $financeRoles,
             'branches' => $ownerOnly,
             'subscription' => $ownerOnly,
             'platform_subscriptions' => ['platform_super_admin'],
@@ -67,6 +77,16 @@ final class Navigation
             && ! in_array('expenses', $keys, true)
         ) {
             $keys[] = 'expenses';
+        }
+
+        // Desktop installs are single-tenant local apps — no platform console
+        // and licensing lives under Settings → License (not a shell nav item).
+        if (Deployment::isDesktop()) {
+            $keys = array_values(array_filter(
+                $keys,
+                static fn (string $key): bool => ! str_starts_with($key, 'platform_')
+                    && $key !== 'subscription',
+            ));
         }
 
         return $keys;

@@ -50,9 +50,32 @@ class SalePolicy
         return $this->canAccessBranch($branch);
     }
 
+    public function hold(User $user, ?Branch $branch = null): bool
+    {
+        return $this->create($user, $branch);
+    }
+
+    public function negotiatePrice(User $user): bool
+    {
+        return $this->canAccessSales();
+    }
+
     public function applyDiscount(User $user): bool
     {
         return $this->canApplySaleDiscount();
+    }
+
+    public function returnItems(User $user, Sale $sale): bool
+    {
+        return $this->canAccessSales()
+            && $this->sameBusiness($sale->business_id)
+            && $sale->status->isCompleted()
+            && $this->view($user, $sale);
+    }
+
+    public function reprint(User $user, Sale $sale): bool
+    {
+        return $this->view($user, $sale);
     }
 
     public function void(User $user, Sale $sale): bool

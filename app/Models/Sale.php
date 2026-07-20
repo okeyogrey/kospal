@@ -23,6 +23,9 @@ class Sale extends Model
         'branch_id',
         'customer_id',
         'cashier_id',
+        'staff_shift_id',
+        'cash_session_id',
+        'approved_by',
         'sale_number',
         'status',
         'payment_method',
@@ -30,12 +33,18 @@ class Sale extends Model
         'subtotal',
         'discount_amount',
         'total',
+        'amount_paid',
+        'cash_tendered',
+        'change_given',
         'customer_name',
         'notes',
         'client_request_id',
         'voided_by',
         'voided_at',
         'void_reason',
+        'held_at',
+        'held_label',
+        'resumed_from_id',
     ];
 
     protected function casts(): array
@@ -46,7 +55,11 @@ class Sale extends Model
             'subtotal' => 'integer',
             'discount_amount' => 'integer',
             'total' => 'integer',
+            'amount_paid' => 'integer',
+            'cash_tendered' => 'integer',
+            'change_given' => 'integer',
             'voided_at' => 'datetime',
+            'held_at' => 'datetime',
         ];
     }
 
@@ -65,9 +78,29 @@ class Sale extends Model
         return $this->belongsTo(User::class, 'cashier_id');
     }
 
+    public function staffShift(): BelongsTo
+    {
+        return $this->belongsTo(StaffShift::class);
+    }
+
+    public function cashSession(): BelongsTo
+    {
+        return $this->belongsTo(CashSession::class);
+    }
+
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
     public function voider(): BelongsTo
     {
         return $this->belongsTo(User::class, 'voided_by');
+    }
+
+    public function resumedFrom(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'resumed_from_id');
     }
 
     public function items(): HasMany
@@ -80,9 +113,29 @@ class Sale extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function paymentAllocations(): HasMany
+    {
+        return $this->hasMany(CustomerPaymentAllocation::class);
+    }
+
+    public function amountDue(): int
+    {
+        return max(0, $this->total - $this->amount_paid);
+    }
+
+    public function isOpenForPayment(): bool
+    {
+        return $this->status === SaleStatus::Completed && $this->amountDue() > 0;
+    }
+
     public function payment(): HasOne
     {
         return $this->hasOne(Payment::class)->latestOfMany();
+    }
+
+    public function returns(): HasMany
+    {
+        return $this->hasMany(SaleReturn::class);
     }
 
     public function stockMovements(): MorphMany

@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { useTranslations } from '@/hooks/use-translations';
 import { compactChartMoney, formatChartMoney } from '@/lib/chart-money';
 import { dashboard } from '@/routes';
-import { index as reportsIndex } from '@/routes/reports';
+import { index as reportsIndex, show as reportShow } from '@/routes/reports';
 import { show as saleShow } from '@/routes/sales';
 
 type Metrics = {
@@ -59,6 +59,17 @@ type ChartPoint = { label: string; value: number };
 
 type BranchOption = { id: number; name: string };
 
+type NegotiationRank = {
+    rank: number;
+    cashier_id: number | null;
+    cashier_name: string;
+    negotiation_score: number;
+    average_selling_price_formatted: string;
+    average_margin_percent: number;
+    negotiation_frequency_percent: number;
+    negotiation_value_formatted: string;
+};
+
 export default function Dashboard({
     metrics,
     recent_sales,
@@ -66,6 +77,7 @@ export default function Dashboard({
     sales_trend,
     payment_breakdown,
     loss_breakdown,
+    negotiation_ranking = [],
     branches,
     filters,
     currency,
@@ -77,6 +89,7 @@ export default function Dashboard({
     sales_trend: ChartPoint[];
     payment_breakdown: ChartPoint[];
     loss_breakdown: ChartPoint[];
+    negotiation_ranking?: NegotiationRank[];
     branches: BranchOption[];
     filters: {
         branch_id: number | null;
@@ -286,6 +299,57 @@ export default function Dashboard({
                                         formatChartMoney(value, currency)
                                     }
                                 />
+                            </section>
+                        ) : null}
+
+                        {permissions.view_reports &&
+                        negotiation_ranking.length > 0 ? (
+                            <section className="rounded-2xl border border-border/80 bg-card/80 p-4 shadow-sm">
+                                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                                    <h2 className="font-display text-lg font-semibold">
+                                        Negotiation ranking
+                                    </h2>
+                                    <Link
+                                        href={reportShow(
+                                            'negotiation_performance',
+                                        )}
+                                        className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                                    >
+                                        Full report
+                                        <ArrowRight className="size-3.5" />
+                                    </Link>
+                                </div>
+                                <ul className="divide-y divide-border/70">
+                                    {negotiation_ranking.map((row) => (
+                                        <li
+                                            key={row.cashier_id ?? row.cashier_name}
+                                            className="flex items-center justify-between gap-3 py-3"
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="truncate font-medium">
+                                                    #{row.rank}{' '}
+                                                    {row.cashier_name}
+                                                </p>
+                                                <p className="truncate text-xs text-muted-foreground">
+                                                    Avg{' '}
+                                                    {
+                                                        row.average_selling_price_formatted
+                                                    }{' '}
+                                                    · Margin{' '}
+                                                    {row.average_margin_percent}
+                                                    % · Negotiated{' '}
+                                                    {
+                                                        row.negotiation_frequency_percent
+                                                    }
+                                                    %
+                                                </p>
+                                            </div>
+                                            <Badge variant="secondary" className="tabular-nums">
+                                                {row.negotiation_score}
+                                            </Badge>
+                                        </li>
+                                    ))}
+                                </ul>
                             </section>
                         ) : null}
 

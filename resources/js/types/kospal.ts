@@ -35,12 +35,19 @@ export type ActiveShift = {
     on_active_branch: boolean;
 };
 
+export type ActiveCashSession = {
+    id: number;
+    opening_float_minor: number;
+    opened_at: string | null;
+};
+
 export type Workspace = {
     business: WorkspaceBusiness | null;
     branch: BranchPlaceholder | null;
     branches: BranchPlaceholder[];
     limits: WorkspaceLimits | null;
     active_shift: ActiveShift | null;
+    active_cash_session: ActiveCashSession | null;
     shift_required: boolean;
     outside_hours: boolean;
     needs_onboarding: boolean;

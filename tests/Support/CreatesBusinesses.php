@@ -71,4 +71,17 @@ trait CreatesBusinesses
 
         return $user;
     }
+
+    protected function clockInAndOpenDrawer(User $user, int $openingFloat = 0): void
+    {
+        test()->actingAs($user)
+            ->post(route('shifts.clock-in'))
+            ->assertRedirect();
+
+        test()->actingAs($user)
+            ->post(route('cash-sessions.open'), [
+                'opening_float' => $openingFloat,
+            ])
+            ->assertRedirect();
+    }
 }

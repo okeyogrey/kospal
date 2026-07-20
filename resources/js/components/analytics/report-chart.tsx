@@ -24,9 +24,13 @@ const HORIZONTAL_BAR_REPORTS = new Set([
     'sales_by_cashier',
     'product_performance',
     'gross_profit',
+    'negotiation_performance',
 ]);
 
-const COUNT_REPORTS = new Set(['stock_movement_summary']);
+const COUNT_REPORTS = new Set([
+    'stock_movement_summary',
+    'negotiation_performance',
+]);
 
 export function resolveReportChartKind(reportKey: string): ReportChartKind {
     if (PIE_REPORTS.has(reportKey)) {

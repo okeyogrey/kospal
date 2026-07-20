@@ -2,14 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\FeatureFlagService;
 use App\Enums\ReportType;
 use App\Models\Branch;
 use App\Services\Analytics\ReportQueryService;
 use App\Support\Analytics\AnalyticsFilter;
 use App\Support\Audit\AuditLogger;
-use App\Support\Plans\PlanLimitChecker;
+use App\Support\FeatureFlags\Features;
 use App\Support\Tenancy\ResolvesTenant;
 use App\Support\Tenancy\TenantContext;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,6 +21,7 @@ class ReportController extends Controller
 {
     public function index(
         TenantContext $tenant,
+        FeatureFlagService $features,
     ): Response {
         $this->authorize('viewAny', ReportType::class);
 
@@ -27,26 +30,31 @@ class ReportController extends Controller
         $membership = $tenant->membership();
         abort_unless($business && $user && $membership, 403);
 
-        $plan = $business->plan;
         $reports = collect(ReportType::cases())->map(fn (ReportType $type) => [
             'key' => $type->value,
             'label' => $type->label(),
             'description' => $type->description(),
             'group' => $type->group(),
             'min_plan' => $type->minPlan()->value,
-            'available' => $type->isAvailableOn($plan),
-            'supports_csv' => $type->supportsCsvExport() && $plan->allowsCsvExport() && $type->isAvailableOn($plan),
+            'available' => $type->isAvailableFor($business, $features),
+                'supports_csv' => $type->supportsCsvExport()
+                    && $features->hasFeature($business, Features::CSV_EXPORT)
+                    && $type->isAvailableFor($business, $features),
+                'supports_pdf' => $type->supportsPdfExport()
+                    && $features->hasFeature($business, Features::PDF_REPORTS)
+                    && $type->isAvailableFor($business, $features),
         ])->groupBy('group');
 
         return Inertia::render('reports/index', [
             'reports' => $reports,
-            'plan' => $plan->value,
+            'plan' => $business->plan->value,
             'features' => [
-                'advanced_reports' => $plan->allowsAdvancedReports(),
-                'csv_export' => $plan->allowsCsvExport(),
-                'consolidated_reports' => $plan->allowsConsolidatedReports(),
-                'audit_logs' => $plan->allowsAuditLogs(),
-                'enhanced_exports' => $plan->allowsEnhancedExports(),
+                'advanced_reports' => $features->hasFeature($business, Features::ADVANCED_REPORTS),
+                'csv_export' => $features->hasFeature($business, Features::CSV_EXPORT),
+                'pdf_reports' => $features->hasFeature($business, Features::PDF_REPORTS),
+                'consolidated_reports' => $features->hasFeature($business, Features::CONSOLIDATED_REPORTS),
+                'audit_logs' => $features->hasFeature($business, Features::AUDIT_LOGS),
+                'enhanced_exports' => $business->plan->allowsEnhancedExports(),
             ],
             'currency' => $business->currency,
         ]);
@@ -58,6 +66,7 @@ class ReportController extends Controller
         TenantContext $tenant,
         ResolvesTenant $resolver,
         ReportQueryService $queries,
+        FeatureFlagService $features,
     ): Response {
         $this->authorize('viewAny', ReportType::class);
 
@@ -72,7 +81,7 @@ class ReportController extends Controller
         $allowedBranches = $resolver->allowedBranches($user, $membership, $business);
         $allowedBranchIds = $allowedBranches->pluck('id')->map(fn ($id) => (int) $id)->all();
 
-        $available = $type->isAvailableOn($business->plan);
+        $available = $type->isAvailableFor($business, $features);
         $filter = AnalyticsFilter::fromRequest($request, $business, $allowedBranchIds);
 
         $payload = $available
@@ -88,6 +97,7 @@ class ReportController extends Controller
                 'min_plan' => $type->minPlan()->value,
                 'available' => $available,
                 'supports_csv' => $type->supportsCsvExport(),
+                'supports_pdf' => $type->supportsPdfExport(),
                 'supports_grain' => in_array($type, [
                     ReportType::SalesTrends,
                     ReportType::ExpenseTrend,
@@ -105,6 +115,7 @@ class ReportController extends Controller
             'currency' => $business->currency,
             'permissions' => [
                 'export' => $user->can('export', $type),
+                'export_pdf' => $user->can('exportPdf', $type),
                 'enhanced_exports' => $business->plan->allowsEnhancedExports(),
             ],
             'upgrade' => $available ? null : [
@@ -125,7 +136,7 @@ class ReportController extends Controller
         TenantContext $tenant,
         ResolvesTenant $resolver,
         ReportQueryService $queries,
-        PlanLimitChecker $limits,
+        FeatureFlagService $features,
         AuditLogger $audit,
     ): StreamedResponse {
         $type = ReportType::tryFrom($report);
@@ -138,8 +149,8 @@ class ReportController extends Controller
         $membership = $tenant->membership();
         abort_unless($business && $user && $membership, 403);
 
-        $limits->assertHasFeature($business, 'csv_export');
-        abort_unless($type->isAvailableOn($business->plan), 422, 'This plan does not include the requested report.');
+        $features->assertHasFeature($business, Features::CSV_EXPORT);
+        abort_unless($type->isAvailableFor($business, $features), 422, 'This plan does not include the requested report.');
         abort_unless($type->supportsCsvExport(), 422, 'This report cannot be exported.');
 
         $allowedBranches = $resolver->allowedBranches($user, $membership, $business);
@@ -174,5 +185,60 @@ class ReportController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    public function exportPdf(
+        Request $request,
+        string $report,
+        TenantContext $tenant,
+        ResolvesTenant $resolver,
+        ReportQueryService $queries,
+        FeatureFlagService $features,
+        AuditLogger $audit,
+    ) {
+        $type = ReportType::tryFrom($report);
+        abort_unless($type !== null, 404);
+
+        $this->authorize('exportPdf', $type);
+
+        $business = $tenant->business();
+        $user = $tenant->user();
+        $membership = $tenant->membership();
+        abort_unless($business && $user && $membership, 403);
+
+        $features->assertHasFeature($business, Features::PDF_REPORTS);
+        abort_unless($type->isAvailableFor($business, $features), 422, 'This plan does not include the requested report.');
+        abort_unless($type->supportsPdfExport(), 422, 'This report cannot be exported as PDF.');
+
+        $allowedBranches = $resolver->allowedBranches($user, $membership, $business);
+        $allowedBranchIds = $allowedBranches->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $filter = AnalyticsFilter::fromRequest($request, $business, $allowedBranchIds);
+        $payload = $queries->run($type, $filter);
+        $csvRows = $queries->csvRows($type, $filter);
+        $headers = $csvRows[0] ?? [];
+        $rows = array_slice($csvRows, 1);
+
+        $filename = sprintf(
+            'kospal-%s-%s-to-%s.pdf',
+            $type->value,
+            $filter->dateFrom->toDateString(),
+            $filter->dateTo->toDateString(),
+        );
+
+        $audit->log('report.exported_pdf', metadata: [
+            'report' => $type->value,
+            'filters' => $filter->toArray(),
+            'row_count' => count($rows),
+        ]);
+
+        return Pdf::loadView('reports.export-pdf', [
+            'business' => $business,
+            'report' => $type,
+            'filter' => $filter,
+            'summary' => $payload['summary'] ?? [],
+            'headers' => $headers,
+            'rows' => $rows,
+            'generatedAt' => now(),
+        ])->download($filename);
     }
 }

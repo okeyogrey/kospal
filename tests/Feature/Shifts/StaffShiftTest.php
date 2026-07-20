@@ -110,6 +110,14 @@ it('allows POS sales after clock-in', function () {
 
     $this->actingAs($cashier)->post(route('shifts.clock-in'))->assertRedirect();
 
+    $this->actingAs($cashier)->post(route('cash-sessions.open'), [
+        'opening_float' => 0,
+    ])->assertRedirect();
+
+    $this->actingAs($cashier)->post(route('cash-sessions.open'), [
+        'opening_float' => 0,
+    ])->assertRedirect();
+
     $this->actingAs($cashier)
         ->post(route('sales.store'), [
             'branch_id' => $branch->id,

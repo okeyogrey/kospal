@@ -10,6 +10,7 @@ use App\Models\Business;
 use App\Models\BusinessMembership;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
+use App\Support\Deployment;
 use App\Support\Time\BusinessClock;
 use Illuminate\Support\Facades\DB;
 
@@ -17,6 +18,7 @@ class BusinessOnboardingService
 {
     public function __construct(
         protected AuditLogger $audit,
+        protected LicenseService $licenses,
     ) {}
 
     /**
@@ -49,11 +51,19 @@ class BusinessOnboardingService
                 'currency' => $data['currency'],
                 'timezone' => $timezone,
                 'default_locale' => $defaultLocale,
-                'plan' => Plan::from(config('kospal.default_plan')),
-                'subscription_status' => SubscriptionStatus::Pending,
+                'plan' => $this->initialPlan(),
+                'subscription_status' => Deployment::isDesktop()
+                    ? SubscriptionStatus::Trial
+                    : SubscriptionStatus::Pending,
+                'subscription_ends_at' => null,
                 'owner_user_id' => $owner->id,
                 'is_active' => true,
             ]);
+
+            if (Deployment::isDesktop()) {
+                $this->licenses->startTrial($business, $owner);
+                $business->refresh();
+            }
 
             if ($owner->preferred_locale === null) {
                 $owner->preferred_locale = $defaultLocale;
@@ -91,6 +101,9 @@ class BusinessOnboardingService
                 auditable: $business,
                 metadata: [
                     'branch_id' => $branch->id,
+                    'deployment_mode' => Deployment::mode(),
+                    'license_edition' => $business->plan->value,
+                    'license_status' => $business->subscription_status->value,
                 ],
                 actor: $owner,
                 businessId: $business->id,
@@ -98,5 +111,16 @@ class BusinessOnboardingService
 
             return compact('business', 'branch', 'membership');
         });
+    }
+
+    protected function initialPlan(): Plan
+    {
+        if (Deployment::isDesktop()) {
+            $edition = (string) config('deployment.license.default_edition', Plan::Enterprise->value);
+
+            return Plan::tryFrom($edition) ?? Plan::Enterprise;
+        }
+
+        return Plan::from(config('kospal.default_plan'));
     }
 }

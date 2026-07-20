@@ -5,6 +5,7 @@ namespace App\Enums;
 enum SubscriptionStatus: string
 {
     case Pending = 'pending';
+    case Trial = 'trial';
     case Active = 'active';
     case Expired = 'expired';
     case Suspended = 'suspended';
@@ -19,7 +20,7 @@ enum SubscriptionStatus: string
 
     public function allowsWriteAccess(): bool
     {
-        return $this === self::Active;
+        return $this === self::Active || $this === self::Trial;
     }
 
     public function isRestricted(): bool

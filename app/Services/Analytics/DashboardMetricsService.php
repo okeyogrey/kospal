@@ -11,6 +11,7 @@ use App\Models\InventoryBalance;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\StockMovement;
+use App\Services\Pricing\NegotiationScoreService;
 use App\Support\Analytics\AnalyticsFilter;
 use App\Support\Analytics\DateGrouping;
 use App\Support\Money\Money;
@@ -20,6 +21,10 @@ use Illuminate\Support\Str;
 
 class DashboardMetricsService
 {
+    public function __construct(
+        protected NegotiationScoreService $negotiationScores,
+    ) {}
+
     /**
      * @return array{
      *     metrics: array<string, mixed>,
@@ -28,6 +33,7 @@ class DashboardMetricsService
      *     sales_trend: list<array{label: string, value: int}>,
      *     payment_breakdown: list<array{label: string, value: int}>,
      *     loss_breakdown: list<array{label: string, value: int}>,
+     *     negotiation_ranking: list<array<string, mixed>>,
      * }
      */
     public function build(AnalyticsFilter $filter): array
@@ -43,6 +49,7 @@ class DashboardMetricsService
                 'sales_trend' => [],
                 'payment_breakdown' => [],
                 'loss_breakdown' => [],
+                'negotiation_ranking' => [],
             ];
         }
 
@@ -111,6 +118,11 @@ class DashboardMetricsService
             'sales_trend' => $this->salesTrend($filter),
             'payment_breakdown' => $this->paymentBreakdown($filter),
             'loss_breakdown' => $losses['breakdown'],
+            'negotiation_ranking' => array_slice(
+                $this->negotiationScores->salespersonRanking($filter)['rows'],
+                0,
+                8,
+            ),
         ];
     }
 

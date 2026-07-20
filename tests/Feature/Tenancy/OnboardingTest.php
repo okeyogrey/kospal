@@ -34,8 +34,9 @@ it('lets a new owner create a business and first branch', function () {
     $business = Business::query()->where('name', 'Kisumu Retail')->first();
 
     expect($business)->not->toBeNull()
-        ->and($business->plan)->toBe(Plan::Starter)
-        ->and($business->subscription_status)->toBe(SubscriptionStatus::Pending)
+        ->and($business->plan)->toBe(Plan::Enterprise)
+        ->and($business->subscription_status)->toBe(SubscriptionStatus::Trial)
+        ->and($business->subscription_ends_at)->not->toBeNull()
         ->and($business->owner_user_id)->toBe($user->id)
         ->and($business->branches)->toHaveCount(1)
         ->and($user->fresh()->memberships()->first()?->role)->toBe(BusinessRole::Owner)

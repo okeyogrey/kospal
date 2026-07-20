@@ -31,4 +31,26 @@ export default defineConfig({
             formVariants: true,
         }),
     ],
+    // Prefer IPv4 so Tauri WebView2 / Windows can load HMR assets.
+    // Ignore Rust build output — watching locked DLLs under src-tauri/target
+    // crashes Vite with EBUSY on Windows during `tauri:dev`.
+    server: {
+        host: '127.0.0.1',
+        port: 5173,
+        strictPort: true,
+        hmr: {
+            host: '127.0.0.1',
+            port: 5173,
+        },
+        watch: {
+            ignored: [
+                '**/src-tauri/target/**',
+                '**/src-tauri/gen/**',
+                '**/vendor/**',
+                '**/storage/**',
+                '**/node_modules/**',
+                '**/.git/**',
+            ],
+        },
+    },
 });

@@ -26,8 +26,11 @@ type ProductDetail = {
     category_name: string | null;
     cost_price: string;
     selling_price: string;
+    min_selling_price: string;
     cost_price_formatted: string;
     selling_price_formatted: string;
+    min_selling_price_formatted: string;
+    is_negotiable: boolean;
     reorder_level: number;
     is_active: boolean;
     supplier_ids: number[];
@@ -73,6 +76,8 @@ export default function ProductShow({
         description: product.description ?? '',
         cost_price: product.cost_price,
         selling_price: product.selling_price,
+        min_selling_price: product.min_selling_price,
+        is_negotiable: product.is_negotiable,
         reorder_level: String(product.reorder_level),
         is_active: product.is_active,
         supplier_ids: product.supplier_ids,
@@ -197,7 +202,7 @@ export default function ProductShow({
                                 </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor="selling_price">
-                                        Selling ({currency})
+                                        Suggested selling ({currency})
                                     </Label>
                                     <Input
                                         id="selling_price"
@@ -212,6 +217,24 @@ export default function ProductShow({
                                     />
                                     <InputError
                                         message={form.errors.selling_price}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="min_selling_price">
+                                        Minimum selling ({currency})
+                                    </Label>
+                                    <Input
+                                        id="min_selling_price"
+                                        value={form.data.min_selling_price}
+                                        onChange={(e) =>
+                                            form.setData(
+                                                'min_selling_price',
+                                                e.target.value,
+                                            )
+                                        }
+                                    />
+                                    <InputError
+                                        message={form.errors.min_selling_price}
                                     />
                                 </div>
                                 <div className="grid gap-2">
@@ -231,6 +254,19 @@ export default function ProductShow({
                                         }
                                     />
                                 </div>
+                                <label className="flex items-center gap-2 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={form.data.is_negotiable}
+                                        onChange={(e) =>
+                                            form.setData(
+                                                'is_negotiable',
+                                                e.target.checked,
+                                            )
+                                        }
+                                    />
+                                    Negotiable at POS
+                                </label>
                                 <label className="flex items-center gap-2 text-sm">
                                     <input
                                         type="checkbox"

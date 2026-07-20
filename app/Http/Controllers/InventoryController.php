@@ -9,6 +9,8 @@ use App\Models\Branch;
 use App\Models\InventoryBalance;
 use App\Models\Product;
 use App\Services\InventoryService;
+use App\Services\InventoryTimelineService;
+use App\Services\InventoryValuationService;
 use App\Support\Money\Money;
 use App\Support\Tenancy\ResolvesTenant;
 use App\Support\Tenancy\TenantContext;
@@ -122,9 +124,98 @@ class InventoryController extends Controller
                 ->map(fn (StockAdjustmentReason $reason) => [
                     'value' => $reason->value,
                     'label' => $reason->label(),
+                    'allows_increase' => $reason->allowsIncrease(),
+                    'allows_decrease' => $reason->allowsDecrease(),
                 ])
                 ->values()
                 ->all(),
+            'currency' => $business->currency,
+        ]);
+    }
+
+    public function timeline(
+        Request $request,
+        TenantContext $tenant,
+        ResolvesTenant $resolver,
+        InventoryTimelineService $timeline,
+    ): Response {
+        $this->authorize('viewAny', InventoryBalance::class);
+
+        $business = $tenant->business();
+        $user = $tenant->user();
+        $membership = $tenant->membership();
+        abort_unless($business && $user && $membership, 403);
+
+        $allowedBranches = $resolver->allowedBranches($user, $membership, $business);
+        $allowedBranchIds = $allowedBranches->pluck('id')->all();
+
+        $branchId = $request->integer('branch_id') ?: null;
+        $productId = $request->integer('product_id') ?: null;
+
+        if ($branchId !== null && ! in_array($branchId, $allowedBranchIds, true)) {
+            abort(403);
+        }
+
+        return Inertia::render('inventory/timeline', [
+            'entries' => $timeline->forBusiness($business, $branchId, $productId),
+            'branches' => $allowedBranches->map(fn (Branch $b) => [
+                'id' => $b->id,
+                'name' => $b->name,
+            ])->values(),
+            'products' => Product::query()
+                ->forBusiness($business)
+                ->active()
+                ->orderBy('name')
+                ->get(['id', 'name', 'sku']),
+            'filters' => [
+                'branch_id' => $branchId,
+                'product_id' => $productId,
+            ],
+            'currency' => $business->currency,
+        ]);
+    }
+
+    public function valuation(
+        Request $request,
+        TenantContext $tenant,
+        ResolvesTenant $resolver,
+        InventoryValuationService $valuation,
+    ): Response {
+        $this->authorize('viewAny', InventoryBalance::class);
+
+        $business = $tenant->business();
+        $user = $tenant->user();
+        $membership = $tenant->membership();
+        abort_unless($business && $user && $membership, 403);
+
+        $allowedBranches = $resolver->allowedBranches($user, $membership, $business);
+        $allowedBranchIds = $allowedBranches->pluck('id')->all();
+
+        $branchId = $request->integer('branch_id') ?: null;
+        $productId = $request->integer('product_id') ?: null;
+
+        if ($branchId !== null && ! in_array($branchId, $allowedBranchIds, true)) {
+            abort(403);
+        }
+
+        $summary = $valuation->summarize($business, $branchId);
+
+        return Inertia::render('inventory/valuation', [
+            'summary' => $summary,
+            'costHistory' => $valuation->costHistory($business, $productId),
+            'branches' => $allowedBranches->map(fn (Branch $b) => [
+                'id' => $b->id,
+                'name' => $b->name,
+            ])->values(),
+            'products' => Product::query()
+                ->forBusiness($business)
+                ->active()
+                ->orderBy('name')
+                ->get(['id', 'name', 'sku']),
+            'filters' => [
+                'branch_id' => $branchId,
+                'product_id' => $productId,
+            ],
             'currency' => $business->currency,
         ]);
     }
@@ -202,6 +293,7 @@ class InventoryController extends Controller
             quantity: (int) $data['quantity'],
             actor: $request->user(),
             note: $data['note'] ?? null,
+            unitCost: isset($data['unit_cost']) ? (int) $data['unit_cost'] : null,
         );
 
         return back()->with('success', 'Stock received.');
@@ -218,6 +310,9 @@ class InventoryController extends Controller
         $data = $request->validated();
         $branch = Branch::query()->forBusiness($business)->whereKey($data['branch_id'])->firstOrFail();
         $product = Product::query()->forBusiness($business)->whereKey($data['product_id'])->firstOrFail();
+        $reason = StockAdjustmentReason::from($data['reason']);
+        $quantity = abs((int) $data['quantity']);
+        $delta = $data['direction'] === 'increase' ? $quantity : -$quantity;
 
         $this->authorize('adjust', [InventoryBalance::class, $branch]);
 
@@ -225,13 +320,13 @@ class InventoryController extends Controller
             business: $business,
             branch: $branch,
             product: $product,
-            quantityDelta: -abs((int) $data['quantity']),
-            reason: StockAdjustmentReason::from($data['reason']),
+            quantityDelta: $delta,
+            reason: $reason,
             note: $data['note'],
             actor: $request->user(),
         );
 
-        return back()->with('success', 'Stock loss recorded.');
+        return back()->with('success', 'Stock adjustment recorded.');
     }
 
     /**

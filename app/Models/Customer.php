@@ -22,18 +22,34 @@ class Customer extends Model
         'address',
         'notes',
         'is_active',
+        'credit_enabled',
+        'credit_limit',
+        'payment_terms_days',
     ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'credit_enabled' => 'boolean',
+            'credit_limit' => 'integer',
+            'payment_terms_days' => 'integer',
         ];
     }
 
     public function sales(): HasMany
     {
         return $this->hasMany(Sale::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(CustomerPayment::class);
+    }
+
+    public function ledgerEntries(): HasMany
+    {
+        return $this->hasMany(CustomerLedgerEntry::class);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Contracts\FeatureFlagService;
 use App\Enums\BusinessRole;
 use App\Enums\InvitationStatus;
 use App\Models\Branch;
@@ -11,14 +12,13 @@ use App\Models\Invitation;
 use App\Models\User;
 use App\Notifications\BusinessInvitationNotification;
 use App\Support\Audit\AuditLogger;
-use App\Support\Plans\PlanLimitChecker;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class StaffInvitationService
 {
     public function __construct(
-        protected PlanLimitChecker $limits,
+        protected FeatureFlagService $limits,
         protected AuditLogger $audit,
     ) {}
 
@@ -174,6 +174,7 @@ class StaffInvitationService
         BusinessRole $role,
         array $branchIds,
         User $actor,
+        ?int $negotiationFloorPercent = null,
     ): void {
         if ($membership->role === BusinessRole::Owner) {
             throw ValidationException::withMessages([
@@ -190,7 +191,13 @@ class StaffInvitationService
         $business = $membership->business()->firstOrFail();
         $validatedBranchIds = $this->validatedBranchIds($business, $role, $branchIds);
 
-        $membership->update(['role' => $role]);
+        $payload = ['role' => $role];
+
+        if ($negotiationFloorPercent !== null) {
+            $payload['negotiation_floor_percent'] = max(0, min(100, $negotiationFloorPercent));
+        }
+
+        $membership->update($payload);
         $this->syncBranchAccess($business, $membership->user, $role, $validatedBranchIds);
 
         $this->audit->log(
@@ -199,6 +206,7 @@ class StaffInvitationService
             metadata: [
                 'role' => $role->value,
                 'branch_ids' => $validatedBranchIds,
+                'negotiation_floor_percent' => $membership->negotiation_floor_percent,
             ],
             actor: $actor,
             businessId: $business->id,

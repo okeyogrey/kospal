@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\BusinessMembership;
 use App\Models\StaffShift;
 use App\Services\StaffShiftService;
+use App\Support\Money\Money;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Time\BusinessClock;
 use App\Support\Time\OperatingHours;
@@ -96,11 +97,21 @@ class StaffShiftController extends Controller
         $business = $tenant->business();
         abort_unless($business, 403);
 
-        $shift->load(['user:id,name,email', 'branch:id,name', 'closedBy:id,name']);
+        $shift->load(['user:id,name,email', 'branch:id,name', 'closedBy:id,name', 'cashSession']);
         $timezone = BusinessClock::resolve($business->timezone, $business->country);
 
         return Inertia::render('shifts/show', [
             'shift' => $this->shiftPayload($shift, $timezone),
+            'cash_session' => $shift->cashSession ? [
+                'id' => $shift->cashSession->id,
+                'status' => $shift->cashSession->status->value,
+                'status_label' => $shift->cashSession->status->label(),
+                'opening_float_formatted' => Money::format($shift->cashSession->opening_float, $business->currency),
+                'variance_formatted' => $shift->cashSession->variance !== null
+                    ? Money::format($shift->cashSession->variance, $business->currency)
+                    : null,
+                'has_variance' => $shift->cashSession->variance !== null && $shift->cashSession->variance !== 0,
+            ] : null,
             'timezone' => $timezone,
             'permissions' => [
                 'force_close' => $tenant->user()?->can('forceClose', $shift) ?? false,

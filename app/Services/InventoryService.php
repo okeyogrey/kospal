@@ -19,6 +19,7 @@ class InventoryService
 {
     public function __construct(
         protected AuditLogger $audit,
+        protected ProductCostService $costs,
     ) {}
 
     public function receiveStock(
@@ -28,6 +29,7 @@ class InventoryService
         int $quantity,
         User $actor,
         ?string $note = null,
+        ?int $unitCost = null,
     ): StockMovement {
         if ($quantity <= 0) {
             throw ValidationException::withMessages([
@@ -37,16 +39,44 @@ class InventoryService
 
         $this->assertSameBusiness($business, $branch, $product);
 
-        return $this->applyMovement(
-            business: $business,
-            branch: $branch,
-            product: $product,
-            type: StockMovementType::StockReceipt,
-            quantityDelta: $quantity,
-            actor: $actor,
-            note: $note,
-            metadata: ['source' => 'stock_receipt'],
-        );
+        return DB::transaction(function () use (
+            $business,
+            $branch,
+            $product,
+            $quantity,
+            $actor,
+            $note,
+            $unitCost,
+        ): StockMovement {
+            $metadata = ['source' => 'stock_receipt'];
+            if ($unitCost !== null) {
+                $metadata['received_unit_cost'] = $unitCost;
+            }
+
+            $movement = $this->applyMovement(
+                business: $business,
+                branch: $branch,
+                product: $product,
+                type: StockMovementType::StockReceipt,
+                quantityDelta: $quantity,
+                actor: $actor,
+                note: $note,
+                unitCost: $unitCost ?? (int) $product->cost_price,
+                metadata: $metadata,
+            );
+
+            if ($unitCost !== null) {
+                $this->costs->recomputeWeightedAverage(
+                    product: $product->fresh() ?? $product,
+                    quantityReceived: $quantity,
+                    unitCostMinor: $unitCost,
+                    actor: $actor,
+                    source: 'stock_receipt',
+                );
+            }
+
+            return $movement;
+        });
     }
 
     /**
@@ -63,6 +93,74 @@ class InventoryService
         return $this->receiveStock($business, $branch, $product, $quantity, $actor, $note);
     }
 
+    public function receiveStockWithCost(
+        Business $business,
+        Branch $branch,
+        Product $product,
+        int $quantity,
+        int $unitCost,
+        User $actor,
+        StockMovementType $type = StockMovementType::PurchaseReceipt,
+        ?string $note = null,
+        ?Model $reference = null,
+        array $metadata = [],
+        bool $recomputeCost = true,
+    ): StockMovement {
+        if ($quantity <= 0) {
+            throw ValidationException::withMessages([
+                'quantity' => 'Received quantity must be greater than zero.',
+            ]);
+        }
+
+        if ($unitCost < 0) {
+            throw ValidationException::withMessages([
+                'unit_cost' => 'Unit cost cannot be negative.',
+            ]);
+        }
+
+        $this->assertSameBusiness($business, $branch, $product);
+
+        return DB::transaction(function () use (
+            $business,
+            $branch,
+            $product,
+            $quantity,
+            $unitCost,
+            $actor,
+            $type,
+            $note,
+            $reference,
+            $metadata,
+            $recomputeCost,
+        ): StockMovement {
+            $movement = $this->applyMovement(
+                business: $business,
+                branch: $branch,
+                product: $product,
+                type: $type,
+                quantityDelta: $quantity,
+                actor: $actor,
+                note: $note,
+                reference: $reference,
+                unitCost: $unitCost,
+                metadata: array_merge(['received_unit_cost' => $unitCost], $metadata),
+            );
+
+            if ($recomputeCost) {
+                $this->costs->recomputeWeightedAverage(
+                    product: $product->fresh() ?? $product,
+                    quantityReceived: $quantity,
+                    unitCostMinor: $unitCost,
+                    actor: $actor,
+                    reference: $reference,
+                    source: $type->value,
+                );
+            }
+
+            return $movement;
+        });
+    }
+
     public function adjustStock(
         Business $business,
         Branch $branch,
@@ -72,9 +170,21 @@ class InventoryService
         string $note,
         User $actor,
     ): StockMovement {
-        if ($quantityDelta >= 0) {
+        if ($quantityDelta === 0) {
             throw ValidationException::withMessages([
-                'quantity_delta' => 'Stock adjustments must reduce quantity (use a negative amount). Record incoming stock with Receive stock instead.',
+                'quantity_delta' => 'Stock adjustment quantity cannot be zero.',
+            ]);
+        }
+
+        if ($quantityDelta > 0 && ! $reason->allowsIncrease()) {
+            throw ValidationException::withMessages([
+                'reason' => 'This adjustment reason cannot increase stock.',
+            ]);
+        }
+
+        if ($quantityDelta < 0 && ! $reason->allowsDecrease()) {
+            throw ValidationException::withMessages([
+                'reason' => 'This adjustment reason cannot decrease stock.',
             ]);
         }
 
@@ -113,6 +223,7 @@ class InventoryService
         ?string $note = null,
         ?Model $reference = null,
         array $metadata = [],
+        ?int $unitCost = null,
     ): StockMovement {
         if ($quantityDelta === 0) {
             throw ValidationException::withMessages([
@@ -133,6 +244,7 @@ class InventoryService
             $note,
             $reference,
             $metadata,
+            $unitCost,
         ): StockMovement {
             $balance = InventoryBalance::query()
                 ->where('business_id', $business->id)
@@ -166,6 +278,8 @@ class InventoryService
 
             $balance->update(['quantity' => $after]);
 
+            $resolvedUnitCost = $unitCost ?? (int) $product->cost_price;
+
             $movement = StockMovement::query()->create([
                 'business_id' => $business->id,
                 'branch_id' => $branch->id,
@@ -175,6 +289,7 @@ class InventoryService
                 'quantity_delta' => $quantityDelta,
                 'quantity_before' => $before,
                 'quantity_after' => $after,
+                'unit_cost' => $resolvedUnitCost,
                 'reason' => $reason,
                 'note' => $note,
                 'reference_type' => $reference?->getMorphClass(),
@@ -192,6 +307,7 @@ class InventoryService
                     'quantity_delta' => $quantityDelta,
                     'quantity_before' => $before,
                     'quantity_after' => $after,
+                    'unit_cost' => $resolvedUnitCost,
                     'reason' => $reason?->value,
                     'note' => $note,
                 ],

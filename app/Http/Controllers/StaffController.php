@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\FeatureFlagService;
 use App\Enums\BusinessRole;
 use App\Enums\InvitationStatus;
 use App\Http\Requests\Staff\StoreInvitationRequest;
@@ -10,7 +11,6 @@ use App\Models\Branch;
 use App\Models\BusinessMembership;
 use App\Models\Invitation;
 use App\Services\StaffInvitationService;
-use App\Support\Plans\PlanLimitChecker;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,7 +19,7 @@ use Inertia\Response;
 
 class StaffController extends Controller
 {
-    public function index(TenantContext $tenant, PlanLimitChecker $limits): Response
+    public function index(TenantContext $tenant, FeatureFlagService $limits): Response
     {
         $this->authorize('viewAny', BusinessMembership::class);
 
@@ -40,6 +40,7 @@ class StaffController extends Controller
                 return [
                     'id' => $membership->id,
                     'role' => $membership->role->value,
+                    'negotiation_floor_percent' => (int) $membership->negotiation_floor_percent,
                     'is_active' => $membership->is_active,
                     'joined_at' => $membership->joined_at,
                     'user' => [
@@ -135,6 +136,9 @@ class StaffController extends Controller
             BusinessRole::from($data['role']),
             $data['branch_ids'] ?? [],
             $request->user(),
+            isset($data['negotiation_floor_percent'])
+                ? (int) $data['negotiation_floor_percent']
+                : null,
         );
 
         return back()->with('success', 'Staff member updated.');

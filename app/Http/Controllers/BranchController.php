@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\FeatureFlagService;
 use App\Http\Requests\Branches\StoreBranchRequest;
 use App\Http\Requests\Branches\UpdateBranchRequest;
 use App\Http\Requests\Business\UpdateOperatingHoursRequest;
 use App\Models\Branch;
 use App\Services\BranchService;
-use App\Support\Plans\PlanLimitChecker;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -15,7 +15,7 @@ use Inertia\Response;
 
 class BranchController extends Controller
 {
-    public function index(TenantContext $tenant, PlanLimitChecker $limits): Response
+    public function index(TenantContext $tenant, FeatureFlagService $limits): Response
     {
         $this->authorize('viewAny', Branch::class);
 

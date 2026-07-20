@@ -1,6 +1,6 @@
 # KOSPAL Architecture
 
-KOSPAL is a multi-tenant retail-management SaaS for small physical retailers in Kenya and Burundi. The tenancy foundation (businesses, branches, memberships, invitations, plan limits, audit logs, platform settings, subscription requests) is implemented. Catalog, inventory, stock transfers, sales/POS, expenses, analytics, and manual subscription approval are implemented.
+KOSPAL is a desktop-first retail management application for small physical retailers in Kenya and Burundi (Laravel + Inertia/React + SQLite + optional Tauri). Shared-DB business/branch tenancy, catalog, inventory, stock transfers, sales/POS, expenses, analytics, and local licensing are implemented. Legacy web/SaaS subscription approval remains available when `KOSPAL_DEPLOYMENT_MODE=web`.
 
 ## Goals
 
@@ -10,10 +10,51 @@ KOSPAL is a multi-tenant retail-management SaaS for small physical retailers in 
 - Localization for English, French, and Kirundi
 - Currency support for KES, BIF, and USD
 - Plan limits enforced per organization
+- Deployment concerns isolated behind contracts (`App\Contracts\*`) so web/SaaS and desktop adapters can swap without rewriting retail services
+
+## Deployment boundaries
+
+Domain code depends on contracts, not packaging details. Bindings live in `DeploymentServiceProvider` and `config/deployment.php`.
+
+| Contract | Desktop adapter (default) | Web adapter |
+| --- | --- | --- |
+| `LicensingService` | `LocalLicensingService` → `LicenseService` | `SubscriptionLicensingService` |
+| `FeatureFlagService` | `PlanLimitChecker` → plan/edition features | same |
+| `DocumentPrinter` | `BladeDomPdfDocumentPrinter` | same |
+| `DatabaseRuntime` | `LaravelDatabaseRuntime` | same |
+| `DatabaseToolkit` | `LaravelDatabaseToolkit` (SQLite prepare/diagnose/repair/export) | same (MySQL/pgsql-safe subset) |
+| `BackupService` | `SqliteFileBackupService` | `UnsupportedBackupService` |
+| `SynchronizationService` | `NoOpSynchronizationService` | same |
+| `DesktopSettings` | `FileDesktopSettings` (JSON under `storage/app/desktop-settings.json`) | same |
+| `UpdateService` | `LocalUpdateService` | `UnsupportedUpdateService` |
+
+Default `KOSPAL_DEPLOYMENT_MODE=desktop`. Onboarding starts a **30-day trial** (`KOSPAL_LICENSE_TRIAL_DAYS`, edition from `KOSPAL_LICENSE_EDITION`). Owners activate licenses under **Settings → License** via online key or offline machine-bound code. Machine ID is stored per installation. After expiry the app stays readable but writes are blocked. Feature entitlements still come from the licensed plan via `FeatureFlagService`. Platform admin subscription approval remains for web mode only.
+
+Desktop owners also manage installation ops under Settings (gated by `deployment.is_desktop`):
+
+| Settings page | Capability |
+| --- | --- |
+| Local | Channel overview and machine preferences summary |
+| Backup | Manual backups + automatic daily schedule (`backup:run`) |
+| Restore | Multi-step restore wizard (pre-restore snapshot) |
+| Health | Database diagnose + backup/update status |
+| Updates | Channel + optional feed check (`KOSPAL_UPDATE_FEED_URL`) |
+| Printer | Preferred printer name + receipt width |
+| Database | Connection info, migrate / repair / export |
+| Storage | Data directory for backups and exports |
+
+Retail services (`SaleService`, `InventoryService`, etc.) stay free of DomPDF, dump paths, update channels, license-key logic, and raw SQL dialect — licensing lives in `LicenseService`; DB ops live in `DatabaseToolkit` / `DatabaseRuntime`.
+
+## Database
+
+- **Desktop default:** SQLite file (`database/database.sqlite` or `KOSPAL_DATA_DIRECTORY`), WAL + foreign keys via `DatabaseToolkit`.
+- **Future engines:** Same migration files target MySQL/MariaDB/PostgreSQL (`DB_CONNECTION=mysql|pgsql`). Use `db:export` when moving data off SQLite.
+- **Versioning:** Laravel `migrations` table plus app-level `database_versions` (`config('deployment.database.schema_version')`). Existing migration files are never rewritten; new changes are additive migrations only.
+- **Ops commands:** `db:prepare`, `db:diagnose`, `db:repair`, `db:export`, `db:version`.
 
 ## Tenancy model
 
-KOSPAL uses **organization-based multi-tenancy** (sometimes called store/workspace tenancy):
+KOSPAL uses **organization-based multi-tenancy** (store/workspace tenancy) for branches and staff even on a single desktop install:
 
 | Concept | Purpose |
 | --- | --- |
@@ -88,7 +129,7 @@ Authenticated UI:
 - Role-filtered navigation
 - Shared loading / empty / error / unauthorized states
 
-Settings (profile, security, appearance) remain under the existing Fortify/settings routes.
+Settings (profile, security, appearance) remain under the existing Fortify/settings routes. Desktop owners also see License plus installation pages (Local, Backup, Restore, Health, Updates, Printer, Database, Storage).
 
 ## Catalog and inventory
 
@@ -102,7 +143,7 @@ Cashiers cannot manage products, suppliers, categories, inventory, or transfers.
 
 Sales are tenant- and branch-scoped. Completing a sale runs in a single database transaction that creates the `sales`, `sale_items`, and `payments` rows, decrements stock via `InventoryService` (`sale` movements), allocates a per-business `sale_number` from `sale_sequences`, and writes audit logs. Duplicate POS submissions are blocked with a unique `client_request_id` per business. Voiding (owner/manager only) restores stock with `sale_void` movements and requires a reason. Discounts require owner/manager permission. Receipts support thermal/A4 print HTML; PDF invoices use DomPDF.
 
-Subscriptions use offline payment instructions and manual platform approval. Owners pick Starter/Pro/Enterprise, submit a transaction code, and platform super-admins approve/reject or directly change plan/status. Pending, expired, and suspended businesses stay readable but mutating actions are blocked server-side.
+Subscriptions (web mode) use offline payment instructions and manual platform approval. Desktop uses trial + signed license activation instead (see Settings → License). Owners on web pick Starter/Pro/Enterprise, submit a transaction code, and platform super-admins approve/reject or directly change plan/status. Pending, expired, and suspended businesses stay readable but mutating actions are blocked server-side.
 
 ## Out of scope for this milestone
 

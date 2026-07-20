@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ $sale->sale_number }} — Receipt</title>
+    <title>{{ $sale->sale_number }} — {{ $labels['title'] ?? 'Receipt' }}</title>
     <style>
         :root {
             color-scheme: light;
@@ -41,7 +41,7 @@
         }
 
         .sheet {
-            width: 80mm;
+            width: {{ $receiptWidth ?? 80 }}mm;
             max-width: 100%;
             margin: 1rem auto;
             padding: 0.5rem 0.75rem 1.25rem;
@@ -87,7 +87,8 @@
         .totals td:last-child { text-align: right; font-weight: 700; }
         .rule { border-top: 1px dashed #333; margin: 0.75rem 0; }
 
-        .void-banner {
+        .void-banner,
+        .reprint-banner {
             border: 2px solid #111;
             text-align: center;
             font-weight: 700;
@@ -98,7 +99,7 @@
 
         @media print {
             .toolbar { display: none !important; }
-            .sheet { margin: 0; width: 80mm; }
+            .sheet { margin: 0; width: {{ $receiptWidth ?? 80 }}mm; }
             .sheet.a4 { width: auto; padding: 12mm; }
             @page { margin: 4mm; }
         }
@@ -106,9 +107,9 @@
 </head>
 <body>
     <div class="toolbar">
-        <button type="button" onclick="window.print()">Print</button>
-        <button type="button" onclick="document.getElementById('receipt').classList.toggle('a4')">Thermal / A4</button>
-        <a href="{{ route('sales.show', $sale) }}">Back to sale</a>
+        <button type="button" onclick="window.print()">{{ $labels['print'] ?? 'Print' }}{{ ! empty($printerName) ? ' ('.$printerName.')' : '' }}</button>
+        <button type="button" onclick="document.getElementById('receipt').classList.toggle('a4')">{{ $labels['thermal_a4'] ?? 'Thermal / A4' }}</button>
+        <a href="{{ route('sales.show', $sale) }}">{{ $labels['back'] ?? 'Back to sale' }}</a>
     </div>
 
     <main id="receipt" class="sheet">
@@ -117,32 +118,32 @@
             <div class="muted">{{ $sale->branch?->name }}</div>
         </div>
 
+        @if (! empty($isReprint))
+            <div class="reprint-banner">{{ $labels['reprint'] ?? 'Reprint' }}</div>
+        @endif
+
         @if ($sale->status->value === 'voided')
-            <div class="void-banner">VOIDED</div>
+            <div class="void-banner">{{ $labels['voided'] ?? 'VOIDED' }}</div>
         @endif
 
         <div class="rule"></div>
 
         <table class="meta">
             <tr>
-                <td>Receipt</td>
+                <td>{{ $labels['receipt'] ?? 'Receipt' }}</td>
                 <td class="right">{{ $sale->sale_number }}</td>
             </tr>
             <tr>
-                <td>Date</td>
+                <td>{{ $labels['date'] ?? 'Date' }}</td>
                 <td class="right">{{ $sale->created_at?->timezone(config('app.timezone'))->format('Y-m-d H:i') }}</td>
             </tr>
             <tr>
-                <td>Cashier</td>
+                <td>{{ $labels['cashier'] ?? 'Cashier' }}</td>
                 <td class="right">{{ $sale->cashier?->name }}</td>
             </tr>
             <tr>
-                <td>Customer</td>
-                <td class="right">{{ $sale->customer?->name ?? $sale->customer_name ?? 'Walk-in' }}</td>
-            </tr>
-            <tr>
-                <td>Payment</td>
-                <td class="right">{{ $sale->payment_method->label() }}</td>
+                <td>{{ $labels['customer'] ?? 'Customer' }}</td>
+                <td class="right">{{ $sale->customer?->name ?? $sale->customer_name ?? ($labels['walk_in'] ?? 'Walk-in') }}</td>
             </tr>
         </table>
 
@@ -151,10 +152,10 @@
         <table class="items">
             <thead>
                 <tr>
-                    <th>Item</th>
-                    <th class="qty">Qty</th>
-                    <th class="price">Price</th>
-                    <th class="total">Total</th>
+                    <th>{{ $labels['item'] ?? 'Item' }}</th>
+                    <th class="qty">{{ $labels['qty'] ?? 'Qty' }}</th>
+                    <th class="price">{{ $labels['price'] ?? 'Price' }}</th>
+                    <th class="total">{{ $labels['total'] ?? 'Total' }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -176,25 +177,41 @@
 
         <table class="totals">
             <tr>
-                <td>Subtotal</td>
+                <td>{{ $labels['subtotal'] ?? 'Subtotal' }}</td>
                 <td>{{ \App\Support\Money\Money::format($sale->subtotal, $currency) }}</td>
             </tr>
             @if ($sale->discount_amount > 0)
                 <tr>
-                    <td>Discount</td>
+                    <td>{{ $labels['discount'] ?? 'Discount' }}</td>
                     <td>-{{ \App\Support\Money\Money::format($sale->discount_amount, $currency) }}</td>
                 </tr>
             @endif
             <tr>
-                <td>Total</td>
+                <td>{{ $labels['total'] ?? 'Total' }}</td>
                 <td>{{ \App\Support\Money\Money::format($sale->total, $currency) }}</td>
             </tr>
+            @foreach ($sale->payments->filter(fn ($payment) => $payment->amount > 0) as $payment)
+                <tr>
+                    <td>{{ $labels['payment'] ?? 'Payment' }} ({{ $payment->method->label() }})</td>
+                    <td>{{ \App\Support\Money\Money::format($payment->amount, $currency) }}</td>
+                </tr>
+            @endforeach
+            @if ($sale->cash_tendered > 0)
+                <tr>
+                    <td>{{ $labels['cash_tendered'] ?? 'Cash tendered' }}</td>
+                    <td>{{ \App\Support\Money\Money::format($sale->cash_tendered, $currency) }}</td>
+                </tr>
+                <tr>
+                    <td>{{ $labels['change'] ?? 'Change' }}</td>
+                    <td>{{ \App\Support\Money\Money::format($sale->change_given, $currency) }}</td>
+                </tr>
+            @endif
         </table>
 
         <div class="rule"></div>
-        <div class="center muted">Thank you for shopping with us.</div>
+        <div class="center muted">{{ $labels['thank_you'] ?? 'Thank you for shopping with us.' }}</div>
         @if ($sale->status->value === 'voided')
-            <div class="center muted">Void reason: {{ $sale->void_reason }}</div>
+            <div class="center muted">{{ $labels['void_reason'] ?? 'Void reason' }}: {{ $sale->void_reason }}</div>
         @endif
     </main>
 </body>

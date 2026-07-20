@@ -2,7 +2,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Services\SubscriptionService;
+use App\Contracts\LicensingService;
 use App\Support\Tenancy\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
@@ -12,7 +12,7 @@ class EnsureSubscriptionAllowsWrites
 {
     public function __construct(
         protected TenantContext $tenant,
-        protected SubscriptionService $subscriptions,
+        protected LicensingService $licensing,
     ) {}
 
     /**
@@ -32,7 +32,7 @@ class EnsureSubscriptionAllowsWrites
             return $next($request);
         }
 
-        $this->subscriptions->expireIfPastDue($business);
+        $this->licensing->refreshStatus($business);
 
         if ($this->isExempt($request)) {
             return $next($request);
@@ -45,11 +45,11 @@ class EnsureSubscriptionAllowsWrites
             return $next($request);
         }
 
-        if ($business->allowsWriteAccess()) {
+        if ($this->licensing->allowsWriteAccess($business)) {
             return $next($request);
         }
 
-        $message = $this->restrictionMessage($business->subscription_status->value);
+        $message = $this->licensing->restrictionMessage($business);
 
         if ($request->expectsJson() && ! $request->header('X-Inertia')) {
             return response()->json(['message' => $message], 403);
@@ -62,6 +62,7 @@ class EnsureSubscriptionAllowsWrites
     {
         return $request->routeIs([
             'subscription.*',
+            'license.*',
             'locale.update',
             'workspace.*',
             'logout',
@@ -74,15 +75,5 @@ class EnsureSubscriptionAllowsWrites
             'login',
             'logout',
         ]);
-    }
-
-    protected function restrictionMessage(string $status): string
-    {
-        return match ($status) {
-            'pending' => 'Your subscription is pending approval. Submit a payment transaction code on the Subscription page, then wait for platform review.',
-            'expired' => 'Your subscription has expired. Submit a new payment on the Subscription page to restore write access.',
-            'suspended' => 'Your subscription is suspended. Contact support or submit a new payment request from the Subscription page.',
-            default => 'Your subscription does not allow this action. Visit the Subscription page for next steps.',
-        };
     }
 }

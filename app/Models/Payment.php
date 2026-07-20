@@ -19,6 +19,8 @@ class Payment extends Model
         'sale_id',
         'method',
         'amount',
+        'tendered_amount',
+        'change_amount',
         'reference',
         'notes',
         'received_by',
@@ -29,6 +31,8 @@ class Payment extends Model
         return [
             'method' => PaymentMethod::class,
             'amount' => 'integer',
+            'tendered_amount' => 'integer',
+            'change_amount' => 'integer',
         ];
     }
 

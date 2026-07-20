@@ -13,6 +13,8 @@ use Tests\Support\CreatesBusinesses;
 uses(RefreshDatabase::class, CreatesBusinesses::class);
 
 beforeEach(function () {
+    config(['deployment.mode' => 'web']);
+
     PlatformSetting::setPaymentInstructions([
         'title' => 'Pay offline',
         'body' => 'Use M-Pesa then submit your code.',

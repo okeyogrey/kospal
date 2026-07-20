@@ -28,8 +28,11 @@ type ProductRow = {
     category_name: string | null;
     cost_price: string;
     selling_price: string;
+    min_selling_price: string;
     cost_price_formatted: string;
     selling_price_formatted: string;
+    min_selling_price_formatted: string;
+    is_negotiable: boolean;
     reorder_level: number;
     is_active: boolean;
     suppliers_count: number;
@@ -73,6 +76,8 @@ export default function ProductsIndex({
         description: '',
         cost_price: '',
         selling_price: '',
+        min_selling_price: '',
+        is_negotiable: true,
         reorder_level: '0',
         is_active: true,
         supplier_ids: [] as number[],
@@ -351,7 +356,7 @@ export default function ProductsIndex({
                                 </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor="selling_price">
-                                        Selling ({currency})
+                                        Suggested selling ({currency})
                                     </Label>
                                     <Input
                                         id="selling_price"
@@ -371,7 +376,47 @@ export default function ProductsIndex({
                                         }
                                     />
                                 </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="min_selling_price">
+                                        Minimum selling ({currency})
+                                    </Label>
+                                    <Input
+                                        id="min_selling_price"
+                                        inputMode="decimal"
+                                        value={
+                                            createForm.data.min_selling_price
+                                        }
+                                        onChange={(e) =>
+                                            createForm.setData(
+                                                'min_selling_price',
+                                                e.target.value,
+                                            )
+                                        }
+                                        placeholder="Defaults to cost"
+                                    />
+                                    <InputError
+                                        message={
+                                            createForm.errors.min_selling_price
+                                        }
+                                    />
+                                </div>
                             </div>
+                            <label className="flex items-center gap-2 text-sm">
+                                <input
+                                    type="checkbox"
+                                    checked={createForm.data.is_negotiable}
+                                    onChange={(e) =>
+                                        createForm.setData(
+                                            'is_negotiable',
+                                            e.target.checked,
+                                        )
+                                    }
+                                />
+                                Negotiable at POS
+                            </label>
+                            <InputError
+                                message={createForm.errors.is_negotiable}
+                            />
                             <div className="grid gap-2">
                                 <Label htmlFor="reorder_level">
                                     Reorder level

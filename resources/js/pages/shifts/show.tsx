@@ -41,10 +41,19 @@ export default function ShiftShow({
     shift,
     timezone,
     permissions,
+    cash_session,
 }: {
     shift: ShiftDetail;
     timezone: string;
     permissions: { force_close: boolean };
+    cash_session: {
+        id: number;
+        status: string;
+        status_label: string;
+        opening_float_formatted: string;
+        variance_formatted: string | null;
+        has_variance: boolean;
+    } | null;
 }) {
     const form = useForm({
         close_reason: '',
@@ -132,6 +141,45 @@ export default function ShiftShow({
                         ) : null}
                     </dl>
                 </section>
+
+                {cash_session ? (
+                    <section className="rounded-2xl border border-border/80 bg-card/80 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h2 className="font-medium">Cash session</h2>
+                            <Button size="sm" variant="outline" asChild>
+                                <Link href={`/cash-sessions/${cash_session.id}`}>
+                                    View session
+                                </Link>
+                            </Button>
+                        </div>
+                        <dl className="mt-3 grid gap-4 sm:grid-cols-3">
+                            <div>
+                                <dt className="text-sm text-muted-foreground">
+                                    Status
+                                </dt>
+                                <dd className="font-medium">
+                                    {cash_session.status_label}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-sm text-muted-foreground">
+                                    Opening float
+                                </dt>
+                                <dd className="font-medium">
+                                    {cash_session.opening_float_formatted}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-sm text-muted-foreground">
+                                    Variance
+                                </dt>
+                                <dd className="font-medium">
+                                    {cash_session.variance_formatted ?? '—'}
+                                </dd>
+                            </div>
+                        </dl>
+                    </section>
+                ) : null}
 
                 {permissions.force_close && shift.is_open ? (
                     <section className="rounded-2xl border border-border/80 bg-card/80 p-4">

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\LicenseActivationMode;
 use App\Enums\OperatingMode;
 use App\Enums\Plan;
 use App\Enums\SubscriptionStatus;
@@ -30,6 +31,11 @@ class Business extends Model
         'plan',
         'subscription_status',
         'subscription_ends_at',
+        'license_activation_mode',
+        'license_key',
+        'license_id',
+        'licensed_machine_id',
+        'licensed_at',
         'max_staff_override',
         'owner_user_id',
         'is_active',
@@ -43,6 +49,9 @@ class Business extends Model
             'subscription_status' => SubscriptionStatus::class,
             'operating_mode' => OperatingMode::class,
             'subscription_ends_at' => 'datetime',
+            'license_activation_mode' => LicenseActivationMode::class,
+            'license_key' => 'encrypted',
+            'licensed_at' => 'datetime',
             'is_active' => 'boolean',
             'cashiers_can_log_expenses' => 'boolean',
             'max_staff_override' => 'integer',

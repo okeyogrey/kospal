@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\FeatureFlagService;
 use App\Enums\StockTransferStatus;
 use App\Http\Requests\StockTransfers\StoreStockTransferRequest;
 use App\Models\AuditLog;
@@ -10,7 +11,7 @@ use App\Models\InventoryBalance;
 use App\Models\Product;
 use App\Models\StockTransfer;
 use App\Services\StockTransferService;
-use App\Support\Plans\PlanLimitChecker;
+use App\Support\FeatureFlags\Features;
 use App\Support\Tenancy\ResolvesTenant;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
@@ -24,7 +25,7 @@ class StockTransferController extends Controller
         Request $request,
         TenantContext $tenant,
         ResolvesTenant $resolver,
-        PlanLimitChecker $limits,
+        FeatureFlagService $features,
     ): Response {
         $this->authorize('viewAny', StockTransfer::class);
 
@@ -32,7 +33,7 @@ class StockTransferController extends Controller
         $user = $tenant->user();
         $membership = $tenant->membership();
         abort_unless($business && $user && $membership, 403);
-        $limits->assertHasFeature($business, 'stock_transfers');
+        $features->assertHasFeature($business, Features::STOCK_TRANSFERS);
 
         $allowedBranches = $resolver->allowedBranches($user, $membership, $business);
         $allowedBranchIds = $allowedBranches->pluck('id')->all();
@@ -98,7 +99,7 @@ class StockTransferController extends Controller
     public function create(
         TenantContext $tenant,
         ResolvesTenant $resolver,
-        PlanLimitChecker $limits,
+        FeatureFlagService $features,
     ): Response {
         $this->authorize('create', StockTransfer::class);
 
@@ -106,7 +107,7 @@ class StockTransferController extends Controller
         $user = $tenant->user();
         $membership = $tenant->membership();
         abort_unless($business && $user && $membership, 403);
-        $limits->assertHasFeature($business, 'stock_transfers');
+        $features->assertHasFeature($business, Features::STOCK_TRANSFERS);
 
         $allowedBranches = $resolver->allowedBranches($user, $membership, $business);
         $allowedBranchIds = $allowedBranches->pluck('id')->all();
@@ -145,11 +146,11 @@ class StockTransferController extends Controller
         StoreStockTransferRequest $request,
         TenantContext $tenant,
         StockTransferService $transfers,
-        PlanLimitChecker $limits,
+        FeatureFlagService $features,
     ): RedirectResponse {
         $business = $tenant->business();
         abort_unless($business, 403);
-        $limits->assertHasFeature($business, 'stock_transfers');
+        $features->assertHasFeature($business, Features::STOCK_TRANSFERS);
 
         $transfer = $transfers->create(
             business: $business,
@@ -165,13 +166,13 @@ class StockTransferController extends Controller
     public function show(
         StockTransfer $stockTransfer,
         TenantContext $tenant,
-        PlanLimitChecker $limits,
+        FeatureFlagService $features,
     ): Response {
         $this->authorize('view', $stockTransfer);
 
         $business = $tenant->business();
         abort_unless($business, 403);
-        $limits->assertHasFeature($business, 'stock_transfers');
+        $features->assertHasFeature($business, Features::STOCK_TRANSFERS);
 
         $stockTransfer->load([
             'sourceBranch:id,business_id,name',

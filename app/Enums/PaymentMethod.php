@@ -8,6 +8,7 @@ enum PaymentMethod: string
     case MobileMoney = 'mobile_money';
     case Card = 'card';
     case BankTransfer = 'bank_transfer';
+    case Credit = 'credit';
     case Other = 'other';
 
     /**
@@ -25,6 +26,7 @@ enum PaymentMethod: string
             self::MobileMoney => 'Mobile money',
             self::Card => 'Card',
             self::BankTransfer => 'Bank transfer',
+            self::Credit => 'On account',
             self::Other => 'Other',
         };
     }

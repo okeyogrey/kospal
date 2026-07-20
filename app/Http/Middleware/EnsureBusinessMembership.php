@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\Deployment;
 use App\Support\Tenancy\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
@@ -24,8 +25,8 @@ class EnsureBusinessMembership
             return redirect()->route('login');
         }
 
-        // Platform admins have no tenant membership context; keep them on platform tools.
-        if ($user->isPlatformSuperAdmin()) {
+        // Web mode: platform admins have no tenant membership; keep them on platform tools.
+        if ($user->isPlatformSuperAdmin() && Deployment::isWeb()) {
             return redirect()->route('platform.subscription-requests.index');
         }
 

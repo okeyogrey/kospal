@@ -8,12 +8,15 @@ use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
 use App\Models\AuditLog;
 use App\Models\Branch;
+use App\Models\CashSession;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\InventoryBalance;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\StaffShift;
 use App\Models\StockMovement;
+use App\Services\Pricing\NegotiationScoreService;
 use App\Support\Analytics\AnalyticsFilter;
 use App\Support\Analytics\DateGrouping;
 use App\Support\Money\Money;
@@ -22,6 +25,10 @@ use Illuminate\Support\Facades\DB;
 
 class ReportQueryService
 {
+    public function __construct(
+        protected NegotiationScoreService $negotiationScores,
+    ) {}
+
     /**
      * @return array{summary?: array<string, mixed>, rows: list<array<string, mixed>>, chart?: list<array<string, mixed>>, meta?: array<string, mixed>}
      */
@@ -39,12 +46,16 @@ class ReportQueryService
             ReportType::SalesByBranch => $this->salesByBranch($filter),
             ReportType::SalesByCashier => $this->salesByCashier($filter),
             ReportType::SalesByPaymentMethod => $this->salesByPaymentMethod($filter),
+            ReportType::ShiftReport => $this->shiftReport($filter),
+            ReportType::EndOfDay => $this->endOfDay($filter),
+            ReportType::CashReconciliation => $this->cashReconciliation($filter),
             ReportType::ProductPerformance => $this->productPerformance($filter),
             ReportType::SlowMovingProducts => $this->slowMovingProducts($filter),
             ReportType::InventoryValue => $this->inventoryValue($filter),
             ReportType::StockMovementSummary => $this->stockMovementSummary($filter),
             ReportType::ExpenseTrend => $this->expenseTrend($filter),
             ReportType::GrossProfit => $this->grossProfit($filter),
+            ReportType::NegotiationPerformance => $this->negotiationScores->salespersonRanking($filter),
             ReportType::BranchComparison => $this->branchComparison($filter),
             ReportType::AuditLogs => $this->auditLogs($filter),
         };
@@ -761,6 +772,191 @@ class ReportQueryService
                 'label' => $row['branch_name'],
                 'value' => $row['sales_total_minor'],
             ], $rows),
+        ];
+    }
+
+    /**
+     * @return array{summary: array<string, mixed>, rows: list<array<string, mixed>>, chart: list<array<string, mixed>>}
+     */
+    protected function shiftReport(AnalyticsFilter $filter): array
+    {
+        $currency = $filter->currency();
+
+        $shifts = StaffShift::query()
+            ->forBusiness($filter->business)
+            ->whereIn('branch_id', $filter->branchIds())
+            ->whereBetween('clocked_in_at', [$filter->dateFrom, $filter->dateTo])
+            ->with(['user:id,name', 'branch:id,name'])
+            ->orderByDesc('clocked_in_at')
+            ->get();
+
+        $rows = $shifts->map(function (StaffShift $shift) use ($currency) {
+            $sales = Sale::query()
+                ->where('staff_shift_id', $shift->id)
+                ->where('status', SaleStatus::Completed)
+                ->selectRaw('COUNT(*) as sale_count')
+                ->selectRaw('COALESCE(SUM(total), 0) as sales_total_minor')
+                ->first();
+
+            $cashSession = CashSession::query()
+                ->where('staff_shift_id', $shift->id)
+                ->first();
+
+            return [
+                'shift_id' => $shift->id,
+                'cashier_name' => $shift->user?->name,
+                'branch_name' => $shift->branch?->name,
+                'clocked_in_at' => $shift->clocked_in_at?->toIso8601String(),
+                'clocked_out_at' => $shift->clocked_out_at?->toIso8601String(),
+                'status' => $shift->status->value,
+                'sale_count' => (int) ($sales->sale_count ?? 0),
+                'sales_total_minor' => (int) ($sales->sales_total_minor ?? 0),
+                'sales_total_formatted' => Money::format((int) ($sales->sales_total_minor ?? 0), $currency),
+                'opening_float_formatted' => $cashSession !== null
+                    ? Money::format($cashSession->opening_float, $currency)
+                    : '—',
+                'variance_formatted' => $cashSession?->variance !== null
+                    ? Money::format($cashSession->variance, $currency)
+                    : '—',
+                'has_variance' => $cashSession?->variance !== null && $cashSession->variance !== 0,
+            ];
+        })->all();
+
+        $totalSales = array_sum(array_column($rows, 'sales_total_minor'));
+
+        return [
+            'summary' => [
+                'shift_count' => count($rows),
+                'sales_total_minor' => $totalSales,
+                'sales_total_formatted' => Money::format($totalSales, $currency),
+                'variance_count' => count(array_filter($rows, fn (array $r) => $r['has_variance'])),
+            ],
+            'rows' => $rows,
+            'chart' => array_map(fn (array $row) => [
+                'label' => ($row['cashier_name'] ?? 'Unknown').' #'.$row['shift_id'],
+                'value' => $row['sales_total_minor'],
+            ], $rows),
+        ];
+    }
+
+    /**
+     * @return array{summary: array<string, mixed>, rows: list<array<string, mixed>>, chart: list<array<string, mixed>>}
+     */
+    protected function endOfDay(AnalyticsFilter $filter): array
+    {
+        $currency = $filter->currency();
+
+        $sessions = CashSession::query()
+            ->forBusiness($filter->business)
+            ->whereIn('branch_id', $filter->branchIds())
+            ->where('status', 'closed')
+            ->whereBetween('closed_at', [$filter->dateFrom, $filter->dateTo])
+            ->with(['user:id,name', 'branch:id,name'])
+            ->orderByDesc('closed_at')
+            ->get();
+
+        $rows = $sessions->map(fn (CashSession $session) => [
+            'session_id' => $session->id,
+            'branch_name' => $session->branch?->name,
+            'cashier_name' => $session->user?->name,
+            'closed_at' => $session->closed_at?->toIso8601String(),
+            'opening_float_formatted' => Money::format($session->opening_float, $currency),
+            'expected_cash_formatted' => $session->expected_cash !== null
+                ? Money::format($session->expected_cash, $currency)
+                : '—',
+            'counted_cash_formatted' => $session->counted_cash !== null
+                ? Money::format($session->counted_cash, $currency)
+                : '—',
+            'variance_formatted' => $session->variance !== null
+                ? Money::format($session->variance, $currency)
+                : '—',
+            'has_variance' => $session->variance !== null && $session->variance !== 0,
+        ])->all();
+
+        $salesTotal = (int) Sale::query()
+            ->forBusiness($filter->business)
+            ->whereIn('branch_id', $filter->branchIds())
+            ->where('status', SaleStatus::Completed)
+            ->whereBetween('created_at', [$filter->dateFrom, $filter->dateTo])
+            ->sum('total');
+
+        return [
+            'summary' => [
+                'session_count' => count($rows),
+                'sales_total_minor' => $salesTotal,
+                'sales_total_formatted' => Money::format($salesTotal, $currency),
+                'variance_count' => count(array_filter($rows, fn (array $r) => $r['has_variance'])),
+                'total_variance_minor' => $sessions->sum('variance'),
+                'total_variance_formatted' => Money::format((int) $sessions->sum('variance'), $currency),
+            ],
+            'rows' => $rows,
+            'chart' => array_map(fn (array $row) => [
+                'label' => $row['branch_name'].' · '.$row['cashier_name'],
+                'value' => 1,
+            ], $rows),
+        ];
+    }
+
+    /**
+     * @return array{summary: array<string, mixed>, rows: list<array<string, mixed>>, chart: list<array<string, mixed>>}
+     */
+    protected function cashReconciliation(AnalyticsFilter $filter): array
+    {
+        $currency = $filter->currency();
+
+        $sessions = CashSession::query()
+            ->forBusiness($filter->business)
+            ->whereIn('branch_id', $filter->branchIds())
+            ->where('status', 'closed')
+            ->whereBetween('closed_at', [$filter->dateFrom, $filter->dateTo])
+            ->with(['user:id,name', 'branch:id,name', 'varianceApprover:id,name'])
+            ->orderByDesc('closed_at')
+            ->get();
+
+        $rows = $sessions->map(fn (CashSession $session) => [
+            'session_id' => $session->id,
+            'branch_name' => $session->branch?->name,
+            'cashier_name' => $session->user?->name,
+            'closed_at' => $session->closed_at?->toIso8601String(),
+            'opening_float_minor' => $session->opening_float,
+            'opening_float_formatted' => Money::format($session->opening_float, $currency),
+            'expected_cash_minor' => $session->expected_cash,
+            'expected_cash_formatted' => $session->expected_cash !== null
+                ? Money::format($session->expected_cash, $currency)
+                : '—',
+            'counted_cash_minor' => $session->counted_cash,
+            'counted_cash_formatted' => $session->counted_cash !== null
+                ? Money::format($session->counted_cash, $currency)
+                : '—',
+            'closing_float_left_formatted' => $session->closing_float_left !== null
+                ? Money::format($session->closing_float_left, $currency)
+                : '—',
+            'variance_minor' => $session->variance,
+            'variance_formatted' => $session->variance !== null
+                ? Money::format($session->variance, $currency)
+                : '—',
+            'variance_reason' => $session->variance_reason,
+            'approved_by' => $session->varianceApprover?->name,
+            'has_variance' => $session->variance !== null && $session->variance !== 0,
+        ])->all();
+
+        $varianceSessions = array_filter($rows, fn (array $r) => $r['has_variance']);
+
+        return [
+            'summary' => [
+                'session_count' => count($rows),
+                'variance_count' => count($varianceSessions),
+                'total_variance_minor' => array_sum(array_column($rows, 'variance_minor')),
+                'total_variance_formatted' => Money::format(
+                    array_sum(array_map(fn (array $r) => (int) ($r['variance_minor'] ?? 0), $rows)),
+                    $currency,
+                ),
+            ],
+            'rows' => $rows,
+            'chart' => array_map(fn (array $row) => [
+                'label' => ($row['branch_name'] ?? '').' #'.$row['session_id'],
+                'value' => abs((int) ($row['variance_minor'] ?? 0)),
+            ], array_values($varianceSessions)),
         ];
     }
 

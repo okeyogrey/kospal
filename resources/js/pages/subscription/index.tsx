@@ -85,7 +85,7 @@ export default function SubscriptionIndex({
         features: string[];
     };
     plans: PlanCard[];
-    payment_instructions: PaymentInstructions;
+    payment_instructions: PaymentInstructions | null;
     requests: Array<{
         id: number;
         requested_plan: string;
@@ -103,7 +103,7 @@ export default function SubscriptionIndex({
     const flash = usePage().props.flash as
         | { success?: string; error?: string }
         | undefined;
-    const form = useForm({
+    const requestForm = useForm({
         requested_plan: business.plan === 'starter' ? 'pro' : business.plan,
         transaction_code: '',
         notes: '',
@@ -237,7 +237,7 @@ export default function SubscriptionIndex({
                                         variant="outline"
                                         className="mt-4 w-full"
                                         onClick={() =>
-                                            form.setData(
+                                            requestForm.setData(
                                                 'requested_plan',
                                                 plan.key,
                                             )
@@ -254,13 +254,13 @@ export default function SubscriptionIndex({
                 <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
                     <section className="rounded-2xl border border-border/80 bg-card/80 p-5">
                         <h2 className="mb-2 font-medium">
-                            {payment_instructions.title}
+                            {payment_instructions?.title}
                         </h2>
                         <p className="mb-4 whitespace-pre-wrap text-sm text-muted-foreground">
-                            {payment_instructions.body}
+                            {payment_instructions?.body}
                         </p>
                         <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                            {payment_instructions.bank_name ? (
+                            {payment_instructions?.bank_name ? (
                                 <div>
                                     <dt className="text-muted-foreground">
                                         Bank
@@ -270,7 +270,7 @@ export default function SubscriptionIndex({
                                     </dd>
                                 </div>
                             ) : null}
-                            {payment_instructions.account_name ? (
+                            {payment_instructions?.account_name ? (
                                 <div>
                                     <dt className="text-muted-foreground">
                                         Account name
@@ -280,7 +280,7 @@ export default function SubscriptionIndex({
                                     </dd>
                                 </div>
                             ) : null}
-                            {payment_instructions.account_number ? (
+                            {payment_instructions?.account_number ? (
                                 <div>
                                     <dt className="text-muted-foreground">
                                         Account number
@@ -290,7 +290,7 @@ export default function SubscriptionIndex({
                                     </dd>
                                 </div>
                             ) : null}
-                            {payment_instructions.mobile_money ? (
+                            {payment_instructions?.mobile_money ? (
                                 <div>
                                     <dt className="text-muted-foreground">
                                         Mobile money
@@ -301,7 +301,7 @@ export default function SubscriptionIndex({
                                 </div>
                             ) : null}
                         </dl>
-                        {payment_instructions.support_note ? (
+                        {payment_instructions?.support_note ? (
                             <p className="mt-4 text-sm text-muted-foreground">
                                 {payment_instructions.support_note}
                             </p>
@@ -322,10 +322,10 @@ export default function SubscriptionIndex({
                                 className="space-y-3"
                                 onSubmit={(event) => {
                                     event.preventDefault();
-                                    form.post(store.url(), {
+                                    requestForm.post(store.url(), {
                                         preserveScroll: true,
                                         onSuccess: () =>
-                                            form.reset(
+                                            requestForm.reset(
                                                 'transaction_code',
                                                 'notes',
                                             ),
@@ -333,15 +333,13 @@ export default function SubscriptionIndex({
                                 }}
                             >
                                 <div className="grid gap-2">
-                                    <Label htmlFor="requested_plan">
-                                        Plan
-                                    </Label>
+                                    <Label htmlFor="requested_plan">Plan</Label>
                                     <select
                                         id="requested_plan"
                                         className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
-                                        value={form.data.requested_plan}
+                                        value={requestForm.data.requested_plan}
                                         onChange={(e) =>
-                                            form.setData(
+                                            requestForm.setData(
                                                 'requested_plan',
                                                 e.target.value,
                                             )
@@ -357,7 +355,9 @@ export default function SubscriptionIndex({
                                         ))}
                                     </select>
                                     <InputError
-                                        message={form.errors.requested_plan}
+                                        message={
+                                            requestForm.errors.requested_plan
+                                        }
                                     />
                                 </div>
                                 <div className="grid gap-2">
@@ -367,9 +367,9 @@ export default function SubscriptionIndex({
                                     <input
                                         id="transaction_code"
                                         className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
-                                        value={form.data.transaction_code}
+                                        value={requestForm.data.transaction_code}
                                         onChange={(e) =>
-                                            form.setData(
+                                            requestForm.setData(
                                                 'transaction_code',
                                                 e.target.value,
                                             )
@@ -378,7 +378,9 @@ export default function SubscriptionIndex({
                                         required
                                     />
                                     <InputError
-                                        message={form.errors.transaction_code}
+                                        message={
+                                            requestForm.errors.transaction_code
+                                        }
                                     />
                                 </div>
                                 <div className="grid gap-2">
@@ -388,19 +390,21 @@ export default function SubscriptionIndex({
                                     <textarea
                                         id="notes"
                                         className="border-input bg-background min-h-24 w-full rounded-md border px-3 py-2 text-sm"
-                                        value={form.data.notes}
+                                        value={requestForm.data.notes}
                                         onChange={(e) =>
-                                            form.setData(
+                                            requestForm.setData(
                                                 'notes',
                                                 e.target.value,
                                             )
                                         }
                                     />
-                                    <InputError message={form.errors.notes} />
+                                    <InputError
+                                        message={requestForm.errors.notes}
+                                    />
                                 </div>
                                 <Button
                                     type="submit"
-                                    disabled={form.processing}
+                                    disabled={requestForm.processing}
                                     className="w-full"
                                 >
                                     Submit for approval
@@ -433,20 +437,6 @@ export default function SubscriptionIndex({
                                         <p className="text-muted-foreground">
                                             Code: {item.transaction_code}
                                         </p>
-                                        {item.notes ? (
-                                            <p className="text-muted-foreground">
-                                                Note: {item.notes}
-                                            </p>
-                                        ) : null}
-                                        {item.reviewer_notes ? (
-                                            <p className="text-muted-foreground">
-                                                Reviewer:{' '}
-                                                {item.reviewer_notes}
-                                                {item.reviewed_by
-                                                    ? ` (${item.reviewed_by})`
-                                                    : ''}
-                                            </p>
-                                        ) : null}
                                     </div>
                                     <Badge variant="secondary">
                                         {item.status}

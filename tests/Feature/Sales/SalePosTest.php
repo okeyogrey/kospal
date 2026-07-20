@@ -75,9 +75,7 @@ function salePayload(Branch $branch, Product $product, array $overrides = []): a
 
 function clockInAs(User $user): void
 {
-    test()->actingAs($user)
-        ->post(route('shifts.clock-in'))
-        ->assertRedirect();
+    test()->clockInAndOpenDrawer($user);
 }
 
 it('completes a sale atomically with items payment stock and audit', function () {

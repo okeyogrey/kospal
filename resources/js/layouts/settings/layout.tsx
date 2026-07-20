@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import type { PropsWithChildren } from 'react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
@@ -6,30 +6,111 @@ import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
 import { edit as editAppearance } from '@/routes/appearance';
+import { edit as editBackup } from '@/routes/backup';
+import { edit as editDatabase } from '@/routes/database';
+import { edit as editDataStorage } from '@/routes/data-storage';
+import { edit as editErrorReporting } from '@/routes/error-reporting';
+import { edit as editHealth } from '@/routes/health';
+import { edit as editLicense } from '@/routes/license';
+import { edit as editLocal } from '@/routes/local';
+import { edit as editPrinter } from '@/routes/printer';
 import { edit } from '@/routes/profile';
+import { edit as editRestore } from '@/routes/restore';
 import { edit as editSecurity } from '@/routes/security';
+import { edit as editUpdates } from '@/routes/updates';
 import type { NavItem } from '@/types';
-
-const sidebarNavItems: NavItem[] = [
-    {
-        title: 'Profile',
-        href: edit(),
-        icon: null,
-    },
-    {
-        title: 'Security',
-        href: editSecurity(),
-        icon: null,
-    },
-    {
-        title: 'Appearance',
-        href: editAppearance(),
-        icon: null,
-    },
-];
 
 export default function SettingsLayout({ children }: PropsWithChildren) {
     const { isCurrentOrParentUrl } = useCurrentUrl();
+    const { auth, deployment } = usePage().props as {
+        auth?: { role?: string | null };
+        deployment?: { is_desktop?: boolean };
+    };
+
+    const showDesktop =
+        Boolean(deployment?.is_desktop) && auth?.role === 'owner';
+
+    const sidebarNavItems: NavItem[] = [
+        {
+            title: 'Profile',
+            href: edit(),
+            icon: null,
+        },
+        {
+            title: 'Security',
+            href: editSecurity(),
+            icon: null,
+        },
+        {
+            title: 'Appearance',
+            href: editAppearance(),
+            icon: null,
+        },
+        ...(showDesktop
+            ? [
+                  {
+                      title: 'License',
+                      href: editLicense(),
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Local',
+                      href: editLocal(),
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Backup',
+                      href: editBackup(),
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Backup wizard',
+                      href: '/settings/backup/wizard',
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Restore',
+                      href: editRestore(),
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Health',
+                      href: editHealth(),
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Error reporting',
+                      href: editErrorReporting(),
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Updates',
+                      href: editUpdates(),
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Printer',
+                      href: editPrinter(),
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Printer wizard',
+                      href: '/settings/printer/wizard',
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Database',
+                      href: editDatabase(),
+                      icon: null,
+                  } satisfies NavItem,
+                  {
+                      title: 'Storage',
+                      href: editDataStorage(),
+                      icon: null,
+                  } satisfies NavItem,
+              ]
+            : []),
+    ];
 
     return (
         <div className="px-4 py-6">

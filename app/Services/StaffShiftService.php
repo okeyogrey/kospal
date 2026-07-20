@@ -19,6 +19,7 @@ class StaffShiftService
     public function __construct(
         protected AuditLogger $audit,
         protected ResolvesTenant $resolver,
+        protected CashSessionService $cashSessions,
     ) {}
 
     /**
@@ -106,6 +107,7 @@ class StaffShiftService
         return DB::transaction(function () use ($shift, $actor) {
             $locked = StaffShift::query()
                 ->whereKey($shift->id)
+                ->with('cashSession')
                 ->lockForUpdate()
                 ->firstOrFail();
 
@@ -118,6 +120,14 @@ class StaffShiftService
             if (! $locked->status->isOpen()) {
                 throw ValidationException::withMessages([
                     'shift' => 'This shift is already closed.',
+                ]);
+            }
+
+            $openCashSession = $locked->cashSession;
+
+            if ($openCashSession !== null && $openCashSession->status->isOpen()) {
+                throw ValidationException::withMessages([
+                    'shift' => 'Close and reconcile the cash drawer before clocking out.',
                 ]);
             }
 
@@ -143,6 +153,7 @@ class StaffShiftService
         return DB::transaction(function () use ($shift, $actor, $reason) {
             $locked = StaffShift::query()
                 ->whereKey($shift->id)
+                ->with('cashSession')
                 ->lockForUpdate()
                 ->firstOrFail();
 
@@ -150,6 +161,12 @@ class StaffShiftService
                 throw ValidationException::withMessages([
                     'shift' => 'This shift is already closed.',
                 ]);
+            }
+
+            $openCashSession = $locked->cashSession;
+
+            if ($openCashSession !== null && $openCashSession->status->isOpen()) {
+                $this->cashSessions->forceClose($openCashSession, $actor, $reason);
             }
 
             $locked->update([

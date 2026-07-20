@@ -16,6 +16,9 @@ class ProductFactory extends Factory
 
     public function definition(): array
     {
+        $cost = fake()->numberBetween(100, 50000);
+        $selling = $cost + fake()->numberBetween(50, 25000);
+
         return [
             'business_id' => Business::factory(),
             'category_id' => null,
@@ -23,11 +26,18 @@ class ProductFactory extends Factory
             'sku' => strtoupper(fake()->unique()->bothify('SKU-####??')),
             'barcode' => fake()->optional()->ean13(),
             'description' => fake()->optional()->sentence(),
-            'cost_price' => fake()->numberBetween(100, 50000),
-            'selling_price' => fake()->numberBetween(150, 75000),
+            'cost_price' => $cost,
+            'selling_price' => $selling,
+            'min_selling_price' => $cost,
+            'is_negotiable' => true,
             'reorder_level' => fake()->numberBetween(0, 20),
             'is_active' => true,
         ];
+    }
+
+    public function nonNegotiable(): static
+    {
+        return $this->state(fn () => ['is_negotiable' => false]);
     }
 
     public function forBusiness(Business $business): static
@@ -51,5 +61,14 @@ class ProductFactory extends Factory
     public function inactive(): static
     {
         return $this->state(fn () => ['is_active' => false]);
+    }
+
+    public function configure(): static
+    {
+        return $this->afterMaking(function (Product $product): void {
+            if ($product->min_selling_price <= 0 || $product->min_selling_price > $product->selling_price) {
+                $product->min_selling_price = min($product->cost_price, $product->selling_price);
+            }
+        });
     }
 }

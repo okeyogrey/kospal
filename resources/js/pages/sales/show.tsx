@@ -3,28 +3,37 @@ import { useState } from 'react';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useTranslations } from '@/hooks/use-translations';
 import {
     index as salesIndex,
     invoice,
     receipt,
+    returns,
     voidMethod,
 } from '@/routes/sales';
+import { reprint } from '@/routes/sales/receipt';
 
 type SaleDetail = {
     id: number;
     sale_number: string;
     status: string;
-    payment_method_label: string;
+    payment_method_label: string | null;
     branch_name: string | null;
     cashier_name: string | null;
     customer_name: string | null;
     notes: string | null;
     void_reason: string | null;
     voided_by_name: string | null;
+    approved_by_name: string | null;
     subtotal_formatted: string;
     discount_amount_formatted: string;
     total_formatted: string;
+    cash_tendered_formatted: string;
+    change_given_formatted: string;
+    cash_tendered_minor: number;
+    change_given_minor: number;
     created_at: string | null;
     voided_at: string | null;
     customer: {
@@ -38,15 +47,29 @@ type SaleDetail = {
         product_name: string;
         sku: string;
         quantity: number;
+        returned_quantity: number;
+        returnable_quantity: number;
         unit_price_formatted: string;
+        list_unit_price_formatted: string;
+        unit_cost_formatted: string;
         line_total_formatted: string;
     }>;
     payments: Array<{
         id: number;
         method_label: string;
         amount_formatted: string;
+        amount_minor: number;
         reference: string | null;
+        notes: string | null;
         received_by_name: string | null;
+    }>;
+    returns: Array<{
+        id: number;
+        return_number: string;
+        total_formatted: string;
+        refund_method: string;
+        reason: string;
+        created_at: string | null;
     }>;
     movements: Array<{
         id: number;
@@ -68,17 +91,55 @@ type ActivityRow = {
     created_at: string | null;
 };
 
+type PaymentOption = { value: string; label: string };
+
+function newRequestId(): string {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+        return crypto.randomUUID();
+    }
+
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export default function SalesShow({
     sale,
     activity,
+    paymentMethods,
     permissions,
 }: {
     sale: SaleDetail;
     activity: ActivityRow[];
-    permissions: { void: boolean };
+    paymentMethods: PaymentOption[];
+    permissions: {
+        void: boolean;
+        return: boolean;
+        reprint: boolean;
+        approve_self: boolean;
+    };
 }) {
+    const { t } = useTranslations();
     const [voidOpen, setVoidOpen] = useState(false);
+    const [returnOpen, setReturnOpen] = useState(false);
     const voidForm = useForm({ reason: '' });
+    const returnForm = useForm({
+        reason: '',
+        refund_method: paymentMethods[0]?.value ?? 'cash',
+        client_request_id: newRequestId(),
+        manager_approval: {
+            login: '',
+            password: '',
+        },
+        items: sale.items
+            .filter((item) => item.returnable_quantity > 0)
+            .map((item) => ({
+                sale_item_id: item.id,
+                quantity: 0,
+                max: item.returnable_quantity,
+                name: item.product_name,
+            })),
+    });
+
+    const reprintForm = useForm({});
 
     return (
         <>
@@ -109,7 +170,9 @@ export default function SalesShow({
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button variant="outline" asChild>
-                            <Link href={salesIndex()}>Back</Link>
+                            <Link href={salesIndex()}>
+                                {t('pages.sales.back', 'Back')}
+                            </Link>
                         </Button>
                         <Button variant="outline" asChild>
                             <a
@@ -117,18 +180,42 @@ export default function SalesShow({
                                 target="_blank"
                                 rel="noreferrer"
                             >
-                                Print receipt
+                                {t('pages.sales.print_receipt', 'Print receipt')}
                             </a>
                         </Button>
+                        {permissions.reprint ? (
+                            <Button
+                                variant="outline"
+                                onClick={() =>
+                                    reprintForm.post(reprint.url(sale.id))
+                                }
+                                disabled={reprintForm.processing}
+                            >
+                                {t(
+                                    'pages.sales.reprint_receipt',
+                                    'Reprint receipt',
+                                )}
+                            </Button>
+                        ) : null}
                         <Button variant="outline" asChild>
-                            <a href={invoice.url(sale.id)}>Download PDF</a>
+                            <a href={invoice.url(sale.id)}>
+                                {t('pages.sales.download_pdf', 'Download PDF')}
+                            </a>
                         </Button>
+                        {permissions.return && sale.status === 'completed' ? (
+                            <Button
+                                variant="outline"
+                                onClick={() => setReturnOpen(true)}
+                            >
+                                {t('pages.sales.partial_return', 'Partial return')}
+                            </Button>
+                        ) : null}
                         {permissions.void ? (
                             <Button
                                 variant="destructive"
                                 onClick={() => setVoidOpen(true)}
                             >
-                                Void sale
+                                {t('pages.sales.void_sale', 'Void sale')}
                             </Button>
                         ) : null}
                     </div>
@@ -137,23 +224,26 @@ export default function SalesShow({
                 <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
                     <section className="rounded-2xl border border-border/80 p-4">
                         <h2 className="mb-3 font-display text-lg font-semibold">
-                            Items
+                            {t('pages.sales.items', 'Items')}
                         </h2>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead className="text-left text-muted-foreground">
                                     <tr>
                                         <th className="pb-2 font-medium">
-                                            Product
+                                            {t('pages.sales.product', 'Product')}
                                         </th>
                                         <th className="pb-2 font-medium">
-                                            Qty
+                                            {t('pages.sales.qty', 'Qty')}
                                         </th>
                                         <th className="pb-2 font-medium">
-                                            Price
+                                            {t('pages.sales.price', 'Price')}
                                         </th>
                                         <th className="pb-2 font-medium">
-                                            Total
+                                            {t('pages.sales.cost', 'Cost')}
+                                        </th>
+                                        <th className="pb-2 font-medium">
+                                            {t('pages.sales.total', 'Total')}
                                         </th>
                                     </tr>
                                 </thead>
@@ -169,6 +259,9 @@ export default function SalesShow({
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">
                                                     {item.sku}
+                                                    {item.returned_quantity > 0
+                                                        ? ` · returned ${item.returned_quantity}`
+                                                        : ''}
                                                 </div>
                                             </td>
                                             <td className="py-3">
@@ -176,6 +269,9 @@ export default function SalesShow({
                                             </td>
                                             <td className="py-3">
                                                 {item.unit_price_formatted}
+                                            </td>
+                                            <td className="py-3 text-muted-foreground">
+                                                {item.unit_cost_formatted}
                                             </td>
                                             <td className="py-3 font-medium">
                                                 {item.line_total_formatted}
@@ -190,50 +286,85 @@ export default function SalesShow({
                     <div className="space-y-4">
                         <section className="rounded-2xl border border-border/80 p-4">
                             <h2 className="mb-3 font-display text-lg font-semibold">
-                                Summary
+                                {t('pages.sales.summary', 'Summary')}
                             </h2>
                             <dl className="space-y-2 text-sm">
                                 <div className="flex justify-between">
-                                    <dt>Customer</dt>
+                                    <dt>{t('pages.sales.customer', 'Customer')}</dt>
                                     <dd>
                                         {sale.customer?.name ??
                                             sale.customer_name ??
-                                            'Walk-in'}
+                                            t('pages.pos.walk_in', 'Walk-in')}
                                     </dd>
                                 </div>
                                 <div className="flex justify-between">
-                                    <dt>Payment</dt>
+                                    <dt>{t('pages.sales.payment', 'Payment')}</dt>
                                     <dd>{sale.payment_method_label}</dd>
                                 </div>
+                                {sale.approved_by_name ? (
+                                    <div className="flex justify-between">
+                                        <dt>
+                                            {t(
+                                                'pages.sales.approved_by',
+                                                'Approved by',
+                                            )}
+                                        </dt>
+                                        <dd>{sale.approved_by_name}</dd>
+                                    </div>
+                                ) : null}
                                 <div className="flex justify-between">
-                                    <dt>Subtotal</dt>
+                                    <dt>{t('pages.pos.subtotal', 'Subtotal')}</dt>
                                     <dd>{sale.subtotal_formatted}</dd>
                                 </div>
                                 <div className="flex justify-between">
-                                    <dt>Discount</dt>
+                                    <dt>{t('pages.pos.discount', 'Discount')}</dt>
                                     <dd>{sale.discount_amount_formatted}</dd>
                                 </div>
                                 <div className="flex justify-between text-base font-semibold">
-                                    <dt>Total</dt>
+                                    <dt>{t('pages.pos.total', 'Total')}</dt>
                                     <dd>{sale.total_formatted}</dd>
                                 </div>
+                                {sale.cash_tendered_minor > 0 ? (
+                                    <>
+                                        <div className="flex justify-between">
+                                            <dt>
+                                                {t(
+                                                    'pages.pos.cash_tendered',
+                                                    'Cash tendered',
+                                                )}
+                                            </dt>
+                                            <dd>
+                                                {sale.cash_tendered_formatted}
+                                            </dd>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <dt>
+                                                {t('pages.pos.change', 'Change')}
+                                            </dt>
+                                            <dd>
+                                                {sale.change_given_formatted}
+                                            </dd>
+                                        </div>
+                                    </>
+                                ) : null}
                             </dl>
                             {sale.notes ? (
                                 <p className="mt-3 text-sm text-muted-foreground">
-                                    Notes: {sale.notes}
+                                    {t('pages.sales.notes', 'Notes')}:{' '}
+                                    {sale.notes}
                                 </p>
                             ) : null}
                             {sale.status === 'voided' ? (
                                 <p className="mt-3 text-sm text-destructive">
-                                    Voided by {sale.voided_by_name}:{' '}
-                                    {sale.void_reason}
+                                    {t('pages.sales.voided_by', 'Voided by')}{' '}
+                                    {sale.voided_by_name}: {sale.void_reason}
                                 </p>
                             ) : null}
                         </section>
 
                         <section className="rounded-2xl border border-border/80 p-4">
                             <h2 className="mb-3 font-display text-lg font-semibold">
-                                Payments
+                                {t('pages.sales.payments', 'Payments')}
                             </h2>
                             <div className="space-y-2 text-sm">
                                 {sale.payments.map((payment) => (
@@ -250,22 +381,51 @@ export default function SalesShow({
                                                 {payment.reference
                                                     ? ` · ${payment.reference}`
                                                     : ''}
+                                                {payment.notes
+                                                    ? ` · ${payment.notes}`
+                                                    : ''}
                                             </div>
                                         </div>
-                                        <div className="font-medium">
+                                        <div
+                                            className={`font-medium ${payment.amount_minor < 0 ? 'text-destructive' : ''}`}
+                                        >
                                             {payment.amount_formatted}
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         </section>
+
+                        {sale.returns.length > 0 ? (
+                            <section className="rounded-2xl border border-border/80 p-4">
+                                <h2 className="mb-3 font-display text-lg font-semibold">
+                                    {t('pages.sales.returns', 'Returns')}
+                                </h2>
+                                <div className="space-y-2 text-sm">
+                                    {sale.returns.map((row) => (
+                                        <div
+                                            key={row.id}
+                                            className="rounded-xl bg-muted/40 px-3 py-2"
+                                        >
+                                            <div className="font-medium">
+                                                {row.return_number} ·{' '}
+                                                {row.total_formatted}
+                                            </div>
+                                            <div className="text-muted-foreground">
+                                                {row.reason}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        ) : null}
                     </div>
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
                     <section className="rounded-2xl border border-border/80 p-4">
                         <h2 className="mb-3 font-display text-lg font-semibold">
-                            Stock movements
+                            {t('pages.sales.stock_movements', 'Stock movements')}
                         </h2>
                         <div className="space-y-2 text-sm">
                             {sale.movements.map((movement) => (
@@ -291,7 +451,7 @@ export default function SalesShow({
 
                     <section className="rounded-2xl border border-border/80 p-4">
                         <h2 className="mb-3 font-display text-lg font-semibold">
-                            Activity
+                            {t('pages.sales.activity', 'Activity')}
                         </h2>
                         <div className="space-y-2 text-sm">
                             {activity.map((row) => (
@@ -330,15 +490,19 @@ export default function SalesShow({
                     >
                         <div>
                             <h3 className="font-display text-xl font-semibold">
-                                Void sale
+                                {t('pages.sales.void_sale', 'Void sale')}
                             </h3>
                             <p className="text-sm text-muted-foreground">
-                                Stock will be restored and the sale marked
-                                voided.
+                                {t(
+                                    'pages.sales.void_hint',
+                                    'Stock will be restored and the sale marked voided.',
+                                )}
                             </p>
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="void_reason">Reason</Label>
+                            <Label htmlFor="void_reason">
+                                {t('pages.sales.reason', 'Reason')}
+                            </Label>
                             <textarea
                                 id="void_reason"
                                 value={voidForm.data.reason}
@@ -359,7 +523,7 @@ export default function SalesShow({
                                 variant="outline"
                                 onClick={() => setVoidOpen(false)}
                             >
-                                Cancel
+                                {t('pages.pos.cancel', 'Cancel')}
                             </Button>
                             <Button
                                 type="submit"
@@ -367,8 +531,226 @@ export default function SalesShow({
                                 disabled={voidForm.processing}
                             >
                                 {voidForm.processing
-                                    ? 'Voiding…'
-                                    : 'Confirm void'}
+                                    ? t('pages.sales.voiding', 'Voiding…')
+                                    : t(
+                                          'pages.sales.confirm_void',
+                                          'Confirm void',
+                                      )}
+                            </Button>
+                        </div>
+                    </form>
+                </div>
+            ) : null}
+
+            {returnOpen ? (
+                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+                    <form
+                        className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-auto rounded-2xl bg-background p-5 shadow-xl"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            returnForm.transform((data) => ({
+                                reason: data.reason,
+                                refund_method: data.refund_method,
+                                client_request_id: data.client_request_id,
+                                manager_approval: permissions.approve_self
+                                    ? null
+                                    : data.manager_approval,
+                                items: data.items
+                                    .filter((item) => item.quantity > 0)
+                                    .map((item) => ({
+                                        sale_item_id: item.sale_item_id,
+                                        quantity: item.quantity,
+                                    })),
+                            }));
+                            returnForm.post(returns.url(sale.id), {
+                                onSuccess: () => {
+                                    setReturnOpen(false);
+                                    returnForm.setData(
+                                        'client_request_id',
+                                        newRequestId(),
+                                    );
+                                },
+                            });
+                        }}
+                    >
+                        <div>
+                            <h3 className="font-display text-xl font-semibold">
+                                {t(
+                                    'pages.sales.partial_return',
+                                    'Partial return',
+                                )}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                                {t(
+                                    'pages.sales.return_hint',
+                                    'Restore stock for selected quantities and record a refund.',
+                                )}
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            {returnForm.data.items.map((item, index) => (
+                                <div
+                                    key={item.sale_item_id}
+                                    className="flex items-center justify-between gap-3 rounded-xl border border-border/70 p-3"
+                                >
+                                    <div>
+                                        <div className="font-medium">
+                                            {item.name}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                            max {item.max}
+                                        </div>
+                                    </div>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        max={item.max}
+                                        value={item.quantity}
+                                        onChange={(event) => {
+                                            const next = [...returnForm.data.items];
+                                            next[index] = {
+                                                ...item,
+                                                quantity: Math.min(
+                                                    item.max,
+                                                    Math.max(
+                                                        0,
+                                                        Number(
+                                                            event.target.value ||
+                                                                0,
+                                                        ),
+                                                    ),
+                                                ),
+                                            };
+                                            returnForm.setData('items', next);
+                                        }}
+                                        className="h-10 w-20 rounded-xl text-center"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="refund_method">
+                                {t(
+                                    'pages.sales.refund_method',
+                                    'Refund method',
+                                )}
+                            </Label>
+                            <select
+                                id="refund_method"
+                                value={returnForm.data.refund_method}
+                                onChange={(event) =>
+                                    returnForm.setData(
+                                        'refund_method',
+                                        event.target.value,
+                                    )
+                                }
+                                className="h-11 w-full rounded-xl border border-input bg-background px-3"
+                            >
+                                {paymentMethods.map((method) => (
+                                    <option
+                                        key={method.value}
+                                        value={method.value}
+                                    >
+                                        {method.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="return_reason">
+                                {t('pages.sales.reason', 'Reason')}
+                            </Label>
+                            <textarea
+                                id="return_reason"
+                                value={returnForm.data.reason}
+                                onChange={(event) =>
+                                    returnForm.setData(
+                                        'reason',
+                                        event.target.value,
+                                    )
+                                }
+                                className="min-h-20 w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm"
+                                required
+                            />
+                            <InputError message={returnForm.errors.reason} />
+                        </div>
+                        {!permissions.approve_self ? (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="space-y-1.5">
+                                    <Label>
+                                        {t(
+                                            'pages.pos.manager_login',
+                                            'Manager login',
+                                        )}
+                                    </Label>
+                                    <Input
+                                        value={
+                                            returnForm.data.manager_approval
+                                                .login
+                                        }
+                                        onChange={(event) =>
+                                            returnForm.setData(
+                                                'manager_approval',
+                                                {
+                                                    ...returnForm.data
+                                                        .manager_approval,
+                                                    login: event.target.value,
+                                                },
+                                            )
+                                        }
+                                        className="h-11 rounded-xl"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label>
+                                        {t(
+                                            'pages.pos.manager_password',
+                                            'Password',
+                                        )}
+                                    </Label>
+                                    <Input
+                                        type="password"
+                                        value={
+                                            returnForm.data.manager_approval
+                                                .password
+                                        }
+                                        onChange={(event) =>
+                                            returnForm.setData(
+                                                'manager_approval',
+                                                {
+                                                    ...returnForm.data
+                                                        .manager_approval,
+                                                    password:
+                                                        event.target.value,
+                                                },
+                                            )
+                                        }
+                                        className="h-11 rounded-xl"
+                                    />
+                                </div>
+                            </div>
+                        ) : null}
+                        <div className="grid grid-cols-2 gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setReturnOpen(false)}
+                            >
+                                {t('pages.pos.cancel', 'Cancel')}
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={returnForm.processing}
+                            >
+                                {returnForm.processing
+                                    ? t(
+                                          'pages.sales.processing_return',
+                                          'Processing…',
+                                      )
+                                    : t(
+                                          'pages.sales.confirm_return',
+                                          'Confirm return',
+                                      )}
                             </Button>
                         </div>
                     </form>

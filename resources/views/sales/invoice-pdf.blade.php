@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
-    <title>{{ $sale->sale_number }} — Invoice</title>
+    <title>{{ $sale->sale_number }} — {{ $labels['invoice'] ?? 'Invoice' }}</title>
     <style>
         body {
             font-family: DejaVu Sans, sans-serif;
@@ -81,11 +81,11 @@
                     <div class="muted">{{ $sale->branch->address }}</div>
                 @endif
                 @if ($sale->status->value === 'voided')
-                    <div class="badge">Voided</div>
+                    <div class="badge">{{ $labels['voided'] ?? 'Voided' }}</div>
                 @endif
             </td>
             <td class="right">
-                <strong>Invoice / Receipt</strong><br>
+                <strong>{{ $labels['invoice'] ?? 'Invoice / Receipt' }}</strong><br>
                 {{ $sale->sale_number }}<br>
                 {{ $sale->created_at?->timezone(config('app.timezone'))->format('Y-m-d H:i') }}
             </td>
@@ -95,8 +95,8 @@
     <table class="header">
         <tr>
             <td>
-                <strong>Bill to</strong><br>
-                {{ $sale->customer?->name ?? $sale->customer_name ?? 'Walk-in customer' }}<br>
+                <strong>{{ $labels['bill_to'] ?? 'Bill to' }}</strong><br>
+                {{ $sale->customer?->name ?? $sale->customer_name ?? ($labels['walk_in_customer'] ?? 'Walk-in customer') }}<br>
                 @if ($sale->customer?->phone)
                     <span class="muted">{{ $sale->customer->phone }}</span><br>
                 @endif
@@ -108,10 +108,10 @@
                 @endif
             </td>
             <td class="right">
-                <strong>Cashier</strong><br>
+                <strong>{{ $labels['cashier'] ?? 'Cashier' }}</strong><br>
                 {{ $sale->cashier?->name }}<br>
-                <strong>Payment</strong><br>
-                {{ $sale->payment_method->label() }}
+                <strong>{{ $labels['payment'] ?? 'Payment' }}</strong><br>
+                {{ $sale->payment_method?->label() }}
             </td>
         </tr>
     </table>
@@ -119,11 +119,11 @@
     <table class="items">
         <thead>
             <tr>
-                <th>Item</th>
-                <th>SKU</th>
-                <th class="qty">Qty</th>
-                <th class="money">Unit price</th>
-                <th class="money">Line total</th>
+                <th>{{ $labels['item'] ?? 'Item' }}</th>
+                <th>{{ $labels['sku'] ?? 'SKU' }}</th>
+                <th class="qty">{{ $labels['qty'] ?? 'Qty' }}</th>
+                <th class="money">{{ $labels['unit_price'] ?? 'Unit price' }}</th>
+                <th class="money">{{ $labels['line_total'] ?? 'Line total' }}</th>
             </tr>
         </thead>
         <tbody>
@@ -141,23 +141,39 @@
 
     <table class="totals">
         <tr>
-            <td>Subtotal</td>
+            <td>{{ $labels['subtotal'] ?? 'Subtotal' }}</td>
             <td>{{ \App\Support\Money\Money::format($sale->subtotal, $currency) }}</td>
         </tr>
         @if ($sale->discount_amount > 0)
             <tr>
-                <td>Discount</td>
+                <td>{{ $labels['discount'] ?? 'Discount' }}</td>
                 <td>-{{ \App\Support\Money\Money::format($sale->discount_amount, $currency) }}</td>
             </tr>
         @endif
         <tr>
-            <td>Total</td>
+            <td>{{ $labels['total'] ?? 'Total' }}</td>
             <td>{{ \App\Support\Money\Money::format($sale->total, $currency) }}</td>
         </tr>
+        @foreach ($sale->payments->filter(fn ($payment) => $payment->amount > 0) as $payment)
+            <tr>
+                <td>{{ $labels['payment'] ?? 'Payment' }} ({{ $payment->method->label() }})</td>
+                <td>{{ \App\Support\Money\Money::format($payment->amount, $currency) }}</td>
+            </tr>
+        @endforeach
+        @if ($sale->cash_tendered > 0)
+            <tr>
+                <td>{{ $labels['cash_tendered'] ?? 'Cash tendered' }}</td>
+                <td>{{ \App\Support\Money\Money::format($sale->cash_tendered, $currency) }}</td>
+            </tr>
+            <tr>
+                <td>{{ $labels['change'] ?? 'Change' }}</td>
+                <td>{{ \App\Support\Money\Money::format($sale->change_given, $currency) }}</td>
+            </tr>
+        @endif
     </table>
 
     @if ($sale->status->value === 'voided')
-        <p class="muted">Void reason: {{ $sale->void_reason }}</p>
+        <p class="muted">{{ $labels['void_reason'] ?? 'Void reason' }}: {{ $sale->void_reason }}</p>
     @endif
 </body>
 </html>

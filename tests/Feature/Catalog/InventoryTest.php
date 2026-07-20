@@ -80,6 +80,7 @@ it('records stock losses with required reason and note', function () {
             'branch_id' => $branch->id,
             'product_id' => $product->id,
             'quantity' => 3,
+            'direction' => 'decrease',
             'reason' => StockAdjustmentReason::Theft->value,
             'note' => 'Missing units after count',
         ])
@@ -107,6 +108,7 @@ it('never allows stock to become negative', function () {
             'branch_id' => $branch->id,
             'product_id' => $product->id,
             'quantity' => 5,
+            'direction' => 'decrease',
             'reason' => StockAdjustmentReason::Loss->value,
             'note' => 'Attempted oversell',
         ])
@@ -125,6 +127,7 @@ it('requires note for adjustments', function () {
             'branch_id' => $branch->id,
             'product_id' => $product->id,
             'quantity' => 1,
+            'direction' => 'decrease',
             'reason' => StockAdjustmentReason::Other->value,
             'note' => '',
         ])
