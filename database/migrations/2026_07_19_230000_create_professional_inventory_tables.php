@@ -172,7 +172,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['supplier_payment_id', 'supplier_invoice_id'], 'spa_payment_invoice_unique');
-            $table->index(['business_id', 'supplier_invoice_id']);
+            $table->index(['business_id', 'supplier_invoice_id'], 'spa_invoice_lookup_index');
         });
 
         Schema::create('stock_counts', function (Blueprint $table): void {
