@@ -21,7 +21,7 @@ it('updates the session locale for supported languages', function (string $local
         ->get(route('dashboard'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page->where('locale', $locale));
-})->with(['en', 'fr', 'rn']);
+})->with(['en', 'fr', 'rn', 'rw']);
 
 it('rejects unsupported locales', function () {
     ['owner' => $user] = $this->createBusinessWithOwner();
@@ -74,10 +74,11 @@ it('falls back to business default locale when session and user preferences are 
         ->assertInertia(fn ($page) => $page->where('locale', 'fr'));
 });
 
-it('keeps French and Kirundi translation keys aligned with English', function () {
+it('keeps French, Kirundi, and Kinyarwanda translation keys aligned with English', function () {
     $en = require lang_path('en/kospal.php');
     $fr = require lang_path('fr/kospal.php');
     $rn = require lang_path('rn/kospal.php');
+    $rw = require lang_path('rw/kospal.php');
 
     $flatten = function (array $array, string $prefix = '') use (&$flatten): array {
         $keys = [];
@@ -95,7 +96,8 @@ it('keeps French and Kirundi translation keys aligned with English', function ()
 
     $enKeys = $flatten($en);
     expect($flatten($fr))->toEqual($enKeys)
-        ->and($flatten($rn))->toEqual($enKeys);
+        ->and($flatten($rn))->toEqual($enKeys)
+        ->and($flatten($rw))->toEqual($enKeys);
 
     foreach ($flatten($fr) as $key) {
         $value = data_get($fr, $key);
@@ -105,6 +107,8 @@ it('keeps French and Kirundi translation keys aligned with English', function ()
     foreach (['nav.dashboard', 'topbar.language', 'states.empty.title', 'welcome.cta_login'] as $key) {
         expect(data_get($rn, $key))->not->toStartWith('[RN]')
             ->and(data_get($rn, $key))->not->toBeEmpty();
+        expect(data_get($rw, $key))->not->toStartWith('[RW]')
+            ->and(data_get($rw, $key))->not->toBeEmpty();
     }
 });
 

@@ -28,3 +28,6 @@ yarn-error.log
 /.vscode
 /.zed
 /src-tauri/target
+/src-tauri/resources/runtime
+/src-tauri/resources/app
+/src-tauri/resources/.cache

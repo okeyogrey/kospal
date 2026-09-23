@@ -19,9 +19,13 @@ use App\Services\Deployment\Desktop\FileDesktopSettings;
 use App\Services\Deployment\Licensing\LocalLicensingService;
 use App\Services\Deployment\Licensing\SubscriptionLicensingService;
 use App\Services\Deployment\Printing\BladeDomPdfDocumentPrinter;
-use App\Services\Deployment\Synchronization\NoOpSynchronizationService;
+use App\Services\Deployment\Synchronization\CloudSynchronizationService;
 use App\Services\Deployment\Updates\LocalUpdateService;
 use App\Services\Deployment\Updates\UnsupportedUpdateService;
+use App\Services\Sync\HttpSyncGateway;
+use App\Services\Sync\LocalSyncGateway;
+use App\Services\Sync\SyncGateway;
+use App\Services\Sync\SyncLinkIndex;
 use App\Support\Deployment;
 use App\Support\Plans\PlanLimitChecker;
 use Illuminate\Support\ServiceProvider;
@@ -54,7 +58,15 @@ class DeploymentServiceProvider extends ServiceProvider
                 : $app->make(UnsupportedBackupService::class),
         );
 
-        $this->app->singleton(SynchronizationService::class, NoOpSynchronizationService::class);
+        $this->app->singleton(SyncLinkIndex::class);
+        $this->app->singleton(SynchronizationService::class, CloudSynchronizationService::class);
+        $this->app->bind(SyncGateway::class, function ($app) {
+            if ($app->runningUnitTests()) {
+                return $app->make(LocalSyncGateway::class);
+            }
+
+            return $app->make(HttpSyncGateway::class);
+        });
         $this->app->singleton(DesktopSettings::class, FileDesktopSettings::class);
 
         $this->app->bind(

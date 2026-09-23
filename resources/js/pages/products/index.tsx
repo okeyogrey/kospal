@@ -70,7 +70,6 @@ export default function ProductsIndex({
 
     const createForm = useForm({
         name: '',
-        sku: '',
         barcode: '',
         category_id: '' as string | number,
         description: '',
@@ -264,7 +263,6 @@ export default function ProductsIndex({
                                     onSuccess: () => {
                                         createForm.reset(
                                             'name',
-                                            'sku',
                                             'barcode',
                                             'description',
                                             'cost_price',
@@ -290,37 +288,22 @@ export default function ProductsIndex({
                                 />
                                 <InputError message={createForm.errors.name} />
                             </div>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                                <div className="grid gap-2">
-                                    <Label htmlFor="sku">SKU</Label>
-                                    <Input
-                                        id="sku"
-                                        value={createForm.data.sku}
-                                        onChange={(e) =>
-                                            createForm.setData(
-                                                'sku',
-                                                e.target.value,
-                                            )
-                                        }
-                                        required
-                                    />
-                                    <InputError
-                                        message={createForm.errors.sku}
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="barcode">Barcode</Label>
-                                    <Input
-                                        id="barcode"
-                                        value={createForm.data.barcode}
-                                        onChange={(e) =>
-                                            createForm.setData(
-                                                'barcode',
-                                                e.target.value,
-                                            )
-                                        }
-                                    />
-                                </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="barcode">Barcode</Label>
+                                <Input
+                                    id="barcode"
+                                    value={createForm.data.barcode}
+                                    onChange={(e) =>
+                                        createForm.setData(
+                                            'barcode',
+                                            e.target.value,
+                                        )
+                                    }
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    SKU is assigned automatically (e.g.
+                                    SKU-0001).
+                                </p>
                             </div>
                             <CategorySelect
                                 taxonomy={taxonomy}

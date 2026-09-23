@@ -18,15 +18,16 @@ trait AuthorizesCatalog
         return $role !== null && $role->canManageCatalog();
     }
 
-    protected function sameBusiness(int $businessId): bool
+    protected function sameBusiness(?int $businessId): bool
     {
-        return $this->tenant()->businessId() !== null
+        return $businessId !== null
+            && $this->tenant()->businessId() !== null
             && $businessId === $this->tenant()->businessId();
     }
 
-    protected function canAccessBranch(Branch $branch): bool
+    protected function canAccessBranch(?Branch $branch): bool
     {
-        if (! $this->sameBusiness($branch->business_id)) {
+        if ($branch === null || ! $this->sameBusiness($branch->business_id)) {
             return false;
         }
 

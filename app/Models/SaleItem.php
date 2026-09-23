@@ -18,6 +18,9 @@ class SaleItem extends Model
         'business_id',
         'sale_id',
         'product_id',
+        'product_pack_id',
+        'pack_quantity',
+        'pack_name',
         'product_name',
         'sku',
         'quantity',
@@ -36,6 +39,7 @@ class SaleItem extends Model
     {
         return [
             'quantity' => 'integer',
+            'pack_quantity' => 'integer',
             'returned_quantity' => 'integer',
             'unit_price' => 'integer',
             'list_unit_price' => 'integer',
@@ -56,6 +60,11 @@ class SaleItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function pack(): BelongsTo
+    {
+        return $this->belongsTo(ProductPack::class, 'product_pack_id');
     }
 
     public function returnItems(): HasMany

@@ -17,8 +17,10 @@ class GoodsReceivedNoteItem extends Model
         'business_id',
         'goods_received_note_id',
         'product_id',
+        'product_pack_id',
         'purchase_order_item_id',
         'quantity',
+        'pack_quantity',
         'unit_cost',
     ];
 
@@ -26,6 +28,7 @@ class GoodsReceivedNoteItem extends Model
     {
         return [
             'quantity' => 'integer',
+            'pack_quantity' => 'integer',
             'unit_cost' => 'integer',
         ];
     }
@@ -38,6 +41,11 @@ class GoodsReceivedNoteItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function pack(): BelongsTo
+    {
+        return $this->belongsTo(ProductPack::class, 'product_pack_id');
     }
 
     public function purchaseOrderItem(): BelongsTo

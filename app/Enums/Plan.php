@@ -68,4 +68,22 @@ enum Plan: string
     {
         return $this === self::Enterprise;
     }
+
+    public function rank(): int
+    {
+        return match ($this) {
+            self::Starter => 1,
+            self::Pro => 2,
+            self::Enterprise => 3,
+        };
+    }
+
+    public function changeTypeToward(self $target): PlanChangeType
+    {
+        return match (true) {
+            $target->rank() > $this->rank() => PlanChangeType::Upgrade,
+            $target->rank() < $this->rank() => PlanChangeType::Downgrade,
+            default => PlanChangeType::Renew,
+        };
+    }
 }

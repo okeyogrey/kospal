@@ -23,11 +23,20 @@ class BranchFactory extends Factory
             'city' => fake()->city(),
             'phone' => fake()->optional()->e164PhoneNumber(),
             'is_active' => true,
+            'plan_paused_max_branches' => null,
         ];
     }
 
     public function inactive(): static
     {
         return $this->state(fn () => ['is_active' => false]);
+    }
+
+    public function planPaused(int $maxBranches): static
+    {
+        return $this->state(fn () => [
+            'is_active' => false,
+            'plan_paused_max_branches' => $maxBranches,
+        ]);
     }
 }

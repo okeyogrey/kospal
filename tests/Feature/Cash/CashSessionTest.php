@@ -8,7 +8,9 @@ use App\Models\AuditLog;
 use App\Models\CashSession;
 use App\Models\InventoryBalance;
 use App\Models\Product;
+use App\Models\Sale;
 use App\Models\StaffShift;
+use App\Services\CashSessionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\Support\CreatesBusinesses;
@@ -71,7 +73,7 @@ it('calculates expected cash from opening float and cash sales', function () {
         ])
         ->assertRedirect();
 
-    $service = app(\App\Services\CashSessionService::class);
+    $service = app(CashSessionService::class);
 
     expect($service->calculateExpectedCash($session->fresh()))->toBe(12500);
 
@@ -99,14 +101,14 @@ it('requires manager approval and audits cash variance', function () {
     $session = CashSession::query()->forBusiness($business)->firstOrFail();
 
     $membership = $business->memberships()->where('user_id', $owner->id)->firstOrFail();
-    $membership->update(['approval_pin' => bcrypt('1234')]);
+    $membership->update(['approval_pin' => bcrypt('123456')]);
 
     $this->actingAs($cashier)
         ->post(route('cash-sessions.close', $session), [
             'counted_cash' => 9000,
             'closing_float_left' => 8000,
             'variance_reason' => 'Missing change fund',
-            'manager_approval' => ['pin' => '1234'],
+            'manager_approval' => ['pin' => '123456'],
         ])
         ->assertRedirect();
 
@@ -190,7 +192,7 @@ it('records paid-in and drop movements', function () {
         ])
         ->assertRedirect();
 
-    $service = app(\App\Services\CashSessionService::class);
+    $service = app(CashSessionService::class);
 
     expect($service->calculateExpectedCash($session->fresh()))->toBe(7000);
 });
@@ -231,7 +233,7 @@ it('links completed sales to the active cash session', function () {
         ])
         ->assertRedirect();
 
-    $sale = \App\Models\Sale::query()
+    $sale = Sale::query()
         ->forBusiness($business)
         ->where('cash_session_id', $session->id)
         ->firstOrFail();

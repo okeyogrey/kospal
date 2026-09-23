@@ -63,6 +63,7 @@ class EnsureSubscriptionAllowsWrites
         return $request->routeIs([
             'subscription.*',
             'license.*',
+            'referrals.*',
             'locale.update',
             'workspace.*',
             'logout',

@@ -61,12 +61,13 @@ export function ShiftClockWidget() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="h-9 gap-1.5"
+                        className="h-9 w-9 gap-0 px-0 sm:w-auto sm:gap-1.5 sm:px-3"
                         disabled={processing}
+                        aria-label="Clock out"
                         onClick={() => submit(clockOut.url())}
                     >
                         <Clock className="size-3.5" />
-                        Clock out
+                        <span className="hidden sm:inline">Clock out</span>
                     </Button>
                 </div>
             ) : (
@@ -79,15 +80,16 @@ export function ShiftClockWidget() {
                     <Button
                         type="button"
                         size="sm"
-                        className="h-9 gap-1.5"
+                        className="h-9 w-9 gap-0 px-0 sm:w-auto sm:gap-1.5 sm:px-3"
                         disabled={
                             processing ||
                             Boolean(shift && !shift.on_active_branch)
                         }
+                        aria-label="Clock in"
                         onClick={() => submit(clockIn.url())}
                     >
                         <Clock className="size-3.5" />
-                        Clock in
+                        <span className="hidden sm:inline">Clock in</span>
                     </Button>
                 </div>
             )}

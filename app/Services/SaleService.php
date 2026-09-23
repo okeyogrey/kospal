@@ -14,10 +14,12 @@ use App\Models\Customer;
 use App\Models\InventoryBalance;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\ProductPack;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
+use App\Models\SyncConflict;
 use App\Models\User;
 use App\Services\Pricing\PricingEngine;
 use App\Support\Audit\AuditLogger;
@@ -230,6 +232,9 @@ class SaleService
                         'business_id' => $business->id,
                         'sale_id' => $sale->id,
                         'product_id' => $item['product']->id,
+                        'product_pack_id' => $item['pack']?->id,
+                        'pack_quantity' => $item['pack_quantity'],
+                        'pack_name' => $item['pack']?->name,
                         'product_name' => $item['product']->name,
                         'sku' => $item['product']->sku,
                         'quantity' => $item['quantity'],
@@ -241,7 +246,7 @@ class SaleService
                         'profit' => $item['profit'],
                         'margin_bps' => $item['margin_bps'],
                         'manager_approved' => $approver !== null
-                            && $item['unit_price'] < $this->pricing->cashierPermissionFloor($item['product'], $membership),
+                            && $item['unit_price'] < $this->packAwareFloor($item, $membership),
                         'line_total' => $item['line_total'],
                     ]);
 
@@ -250,7 +255,7 @@ class SaleService
                         branch: $branch,
                         product: $item['product'],
                         type: StockMovementType::Sale,
-                        quantityDelta: -$item['quantity'],
+                        quantityDelta: -$item['base_quantity'],
                         actor: $actor,
                         note: 'Sale '.$saleNumber,
                         reference: $sale,
@@ -258,6 +263,8 @@ class SaleService
                             'sale_id' => $sale->id,
                             'sale_number' => $saleNumber,
                             'source' => 'pos',
+                            'product_pack_id' => $item['pack']?->id,
+                            'pack_quantity' => $item['pack_quantity'],
                         ],
                     );
                 }
@@ -462,6 +469,9 @@ class SaleService
                     'business_id' => $business->id,
                     'sale_id' => $held->id,
                     'product_id' => $item['product']->id,
+                    'product_pack_id' => $item['pack']?->id,
+                    'pack_quantity' => $item['pack_quantity'],
+                    'pack_name' => $item['pack']?->name,
                     'product_name' => $item['product']->name,
                     'sku' => $item['product']->sku,
                     'quantity' => $item['quantity'],
@@ -473,7 +483,7 @@ class SaleService
                     'profit' => $item['profit'],
                     'margin_bps' => $item['margin_bps'],
                     'manager_approved' => $approver !== null
-                        && $item['unit_price'] < $this->pricing->cashierPermissionFloor($item['product'], $membership),
+                        && $item['unit_price'] < $this->packAwareFloor($item, $membership),
                     'line_total' => $item['line_total'],
                 ]);
             }
@@ -801,29 +811,33 @@ class SaleService
 
             $locked->loadMissing(['items.product', 'branch', 'business']);
 
-            foreach ($locked->items as $item) {
-                $restoreQty = $item->quantity - $item->returned_quantity;
+            $conflicted = $locked->sync_conflict_at !== null;
 
-                if ($restoreQty < 1) {
-                    continue;
+            if (! $conflicted) {
+                foreach ($locked->items as $item) {
+                    $restoreQty = $item->quantity - $item->returned_quantity;
+
+                    if ($restoreQty < 1) {
+                        continue;
+                    }
+
+                    $this->inventory->applyMovement(
+                        business: $locked->business,
+                        branch: $locked->branch,
+                        product: $item->product,
+                        type: StockMovementType::SaleVoid,
+                        quantityDelta: $restoreQty,
+                        actor: $actor,
+                        note: 'Void '.$locked->sale_number.': '.$reason,
+                        reference: $locked,
+                        metadata: [
+                            'sale_id' => $locked->id,
+                            'sale_number' => $locked->sale_number,
+                            'source' => 'sale_void',
+                            'void_reason' => $reason,
+                        ],
+                    );
                 }
-
-                $this->inventory->applyMovement(
-                    business: $locked->business,
-                    branch: $locked->branch,
-                    product: $item->product,
-                    type: StockMovementType::SaleVoid,
-                    quantityDelta: $restoreQty,
-                    actor: $actor,
-                    note: 'Void '.$locked->sale_number.': '.$reason,
-                    reference: $locked,
-                    metadata: [
-                        'sale_id' => $locked->id,
-                        'sale_number' => $locked->sale_number,
-                        'source' => 'sale_void',
-                        'void_reason' => $reason,
-                    ],
-                );
             }
 
             $locked->update([
@@ -832,6 +846,13 @@ class SaleService
                 'voided_at' => now(),
                 'void_reason' => $reason,
             ]);
+
+            if ($conflicted) {
+                SyncConflict::query()
+                    ->where('sale_id', $locked->id)
+                    ->whereNull('resolved_at')
+                    ->update(['resolved_at' => now()]);
+            }
 
             $this->audit->log(
                 action: 'sale.voided',
@@ -889,10 +910,13 @@ class SaleService
     }
 
     /**
-     * @param  list<array{product_id: int, quantity: int, unit_price?: int|null, list_unit_price?: int|null}>  $rawItems
+     * @param  list<array{product_id: int, quantity: int, product_pack_id?: int|null, unit_price?: int|null, list_unit_price?: int|null}>  $rawItems
      * @return list<array{
      *     product: Product,
+     *     pack: ProductPack|null,
      *     quantity: int,
+     *     pack_quantity: int|null,
+     *     base_quantity: int,
      *     unit_price: int,
      *     list_unit_price: int,
      *     unit_cost: int,
@@ -915,17 +939,21 @@ class SaleService
 
         foreach ($rawItems as $index => $raw) {
             $productId = (int) $raw['product_id'];
-            $quantity = (int) $raw['quantity'];
+            $inputQuantity = (int) $raw['quantity'];
+            $packId = isset($raw['product_pack_id']) && $raw['product_pack_id'] !== null
+                ? (int) $raw['product_pack_id']
+                : null;
+            $lineKey = $productId.':'.($packId ?? 0);
 
-            if ($quantity < 1) {
+            if ($inputQuantity < 1) {
                 throw ValidationException::withMessages([
                     "items.{$index}.quantity" => 'Quantity must be at least 1.',
                 ]);
             }
 
-            if (isset($seen[$productId])) {
+            if (isset($seen[$lineKey])) {
                 throw ValidationException::withMessages([
-                    "items.{$index}.product_id" => 'Each product can only appear once on a sale.',
+                    "items.{$index}.product_id" => 'Each product/pack combination can only appear once on a sale.',
                 ]);
             }
 
@@ -941,9 +969,34 @@ class SaleService
                 ]);
             }
 
+            $pack = null;
+            $unitsPerPack = 1;
+
+            if ($packId !== null) {
+                $pack = ProductPack::query()
+                    ->forBusiness($business)
+                    ->whereKey($packId)
+                    ->where('product_id', $product->id)
+                    ->where('is_active', true)
+                    ->first();
+
+                if ($pack === null) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.product_pack_id" => 'Selected pack is invalid for this product.',
+                    ]);
+                }
+
+                $unitsPerPack = max(1, (int) $pack->units_per_pack);
+            }
+
+            $baseQuantity = $inputQuantity * $unitsPerPack;
+            $defaultList = $pack
+                ? $pack->effectiveSellingPrice((int) $product->selling_price)
+                : (int) $product->selling_price;
+
             $listUnitPrice = array_key_exists('list_unit_price', $raw) && $raw['list_unit_price'] !== null
                 ? (int) $raw['list_unit_price']
-                : (int) $product->selling_price;
+                : $defaultList;
 
             $unitPrice = array_key_exists('unit_price', $raw) && $raw['unit_price'] !== null
                 ? (int) $raw['unit_price']
@@ -955,32 +1008,56 @@ class SaleService
                 ]);
             }
 
+            $minSelling = max(0, (int) $product->min_selling_price) * $unitsPerPack;
+            if ($unitPrice < $minSelling) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.unit_price" => sprintf(
+                        'Price for %s cannot fall below the minimum selling price.',
+                        $product->name,
+                    ),
+                ]);
+            }
+
             $this->pricing->assertLinePriceAllowed(
                 $product,
                 $unitPrice,
                 $listUnitPrice,
                 $membership,
                 $index,
+                $unitsPerPack,
             );
 
-            $unitCost = (int) $product->cost_price;
-            $snapshots = $this->pricing->lineSnapshots($unitPrice, $listUnitPrice, $unitCost, $quantity);
+            $unitCost = (int) $product->cost_price * $unitsPerPack;
+            $snapshots = $this->pricing->lineSnapshots($unitPrice, $listUnitPrice, $unitCost, $inputQuantity);
 
-            $seen[$productId] = true;
+            $seen[$lineKey] = true;
             $normalized[] = [
                 'product' => $product,
-                'quantity' => $quantity,
+                'pack' => $pack,
+                'quantity' => $inputQuantity,
+                'pack_quantity' => $pack ? $inputQuantity : null,
+                'base_quantity' => $baseQuantity,
                 'unit_price' => $unitPrice,
                 'list_unit_price' => $listUnitPrice,
                 'unit_cost' => $unitCost,
                 'negotiated_difference' => $snapshots['negotiated_difference'],
                 'profit' => $snapshots['profit'],
                 'margin_bps' => $snapshots['margin_bps'],
-                'line_total' => $unitPrice * $quantity,
+                'line_total' => $unitPrice * $inputQuantity,
             ];
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param  array{product: Product, pack: ProductPack|null, unit_price: int}  $item
+     */
+    protected function packAwareFloor(array $item, ?BusinessMembership $membership): int
+    {
+        $units = max(1, (int) ($item['pack']?->units_per_pack ?? 1));
+
+        return $this->pricing->cashierPermissionFloor($item['product'], $membership, $units);
     }
 
     protected function membershipFor(Business $business, User $actor): ?BusinessMembership
@@ -989,6 +1066,7 @@ class SaleService
             ->forBusiness($business)
             ->where('user_id', $actor->id)
             ->where('is_active', true)
+            ->with('business')
             ->first();
     }
 
@@ -1095,12 +1173,13 @@ class SaleService
                 ->where('product_id', $item['product']->id)
                 ->value('quantity');
 
-            if ($item['quantity'] > $available) {
+            if ($item['base_quantity'] > $available) {
                 throw ValidationException::withMessages([
                     "items.{$index}.quantity" => sprintf(
-                        'Insufficient stock for %s. Available: %d.',
+                        'Insufficient stock for %s. Available: %d %s.',
                         $item['product']->name,
                         $available,
+                        $item['product']->base_unit_name ?: 'units',
                     ),
                 ]);
             }

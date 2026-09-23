@@ -24,8 +24,8 @@ return [
 
     'license' => [
         // Plan enum value used as the trial / licensed edition on first onboarding.
-        'default_edition' => env('KOSPAL_LICENSE_EDITION', 'enterprise'),
-        'trial_days' => (int) env('KOSPAL_LICENSE_TRIAL_DAYS', 30),
+        'default_edition' => env('KOSPAL_LICENSE_EDITION', 'pro'),
+        'trial_days' => (int) env('KOSPAL_LICENSE_TRIAL_DAYS', 60),
         // HMAC secret for signed license keys. Falls back to APP_KEY when empty.
         'secret' => env('KOSPAL_LICENSE_SECRET'),
         // Optional remote activation endpoint. When empty, online keys are verified locally.
@@ -77,7 +77,7 @@ return [
     */
 
     'database' => [
-        'schema_version' => 2,
+        'schema_version' => 4,
         'default_driver' => 'sqlite',
         'supported_drivers' => ['sqlite', 'mysql', 'mariadb', 'pgsql'],
         'sqlite' => [

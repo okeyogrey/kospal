@@ -112,9 +112,15 @@ class StockCountController extends Controller
         $this->authorize('view', $stockCount);
         $features->assertHasFeature($stockCount->business, Features::STOCK_COUNTS);
 
+        $permissions = [
+            'update' => $tenant->user()?->can('update', $stockCount) ?? false,
+            'complete' => $tenant->user()?->can('complete', $stockCount) ?? false,
+            'cancel' => $tenant->user()?->can('cancel', $stockCount) ?? false,
+        ];
+
         $stockCount->load([
             'items.product:id,name,sku',
-            'branch:id,name',
+            'branch:id,business_id,name',
             'creator:id,name',
             'completer:id,name',
             'stockMovements.product:id,name',
@@ -165,11 +171,7 @@ class StockCountController extends Controller
                 ])->values(),
             ],
             'activity' => $activity,
-            'permissions' => [
-                'update' => $tenant->user()?->can('update', $stockCount) ?? false,
-                'complete' => $tenant->user()?->can('complete', $stockCount) ?? false,
-                'cancel' => $tenant->user()?->can('cancel', $stockCount) ?? false,
-            ],
+            'permissions' => $permissions,
         ]);
     }
 

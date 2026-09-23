@@ -34,6 +34,8 @@ class StockMovement extends Model
         'reference_id',
         'metadata',
         'created_at',
+        'public_uuid',
+        'sync_local_only',
     ];
 
     protected function casts(): array
@@ -47,6 +49,7 @@ class StockMovement extends Model
             'unit_cost' => 'integer',
             'metadata' => 'array',
             'created_at' => 'datetime',
+            'sync_local_only' => 'boolean',
         ];
     }
 

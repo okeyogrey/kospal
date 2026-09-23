@@ -26,6 +26,7 @@ class ProductFactory extends Factory
             'sku' => strtoupper(fake()->unique()->bothify('SKU-####??')),
             'barcode' => fake()->optional()->ean13(),
             'description' => fake()->optional()->sentence(),
+            'base_unit_name' => 'piece',
             'cost_price' => $cost,
             'selling_price' => $selling,
             'min_selling_price' => $cost,

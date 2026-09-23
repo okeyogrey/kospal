@@ -23,6 +23,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property int|null $current_business_id
  * @property int|null $current_branch_id
  * @property Carbon|null $email_verified_at
+ * @property string|null $public_uuid
  * @property string $password
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
@@ -39,6 +40,7 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'public_uuid',
         'phone',
         'preferred_locale',
         'password',

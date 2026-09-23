@@ -3,15 +3,11 @@
 namespace App\Notifications;
 
 use App\Models\Invitation;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class BusinessInvitationNotification extends Notification implements ShouldQueue
+class BusinessInvitationNotification extends Notification
 {
-    use Queueable;
-
     public function __construct(
         public Invitation $invitation,
     ) {}
@@ -33,6 +29,7 @@ class BusinessInvitationNotification extends Notification implements ShouldQueue
             ->subject('KOSPAL staff invitation')
             ->line("You have been invited to join {$businessName} on KOSPAL.")
             ->line('Role: '.$this->invitation->role->value)
+            ->line('Open the link below to create your password (or sign in if you already have a KOSPAL account), then join the team.')
             ->action('Accept invitation', $url)
             ->line('This invitation expires at '.$this->invitation->expires_at->toDayDateTimeString().'.');
     }

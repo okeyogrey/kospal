@@ -121,6 +121,29 @@ it('allows inventory clerks to manage catalog', function () {
     expect(Product::query()->forBusiness($business)->where('sku', 'SOAP-01')->exists())->toBeTrue();
 });
 
+it('auto assigns SKU when creating a product without one', function () {
+    ['owner' => $owner, 'business' => $business] = $this->createBusinessWithOwner();
+
+    Product::factory()->create([
+        'business_id' => $business->id,
+        'sku' => 'SKU-0001',
+    ]);
+
+    $this->actingAs($owner)
+        ->post(route('products.store'), [
+            'name' => 'Auto SKU Soap',
+            'cost_price' => '1.00',
+            'selling_price' => '2.00',
+            'reorder_level' => 1,
+        ])
+        ->assertRedirect();
+
+    $product = Product::query()->forBusiness($business)->where('name', 'Auto SKU Soap')->first();
+
+    expect($product)->not->toBeNull()
+        ->and($product->sku)->toBe('SKU-0002');
+});
+
 it('blocks deleting categories that still have products', function () {
     ['owner' => $owner, 'business' => $business] = $this->createBusinessWithOwner();
 

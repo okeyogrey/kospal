@@ -49,6 +49,11 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
         ...(showDesktop
             ? [
                   {
+                      title: 'Shops',
+                      href: '/settings/shops',
+                      icon: null,
+                  } satisfies NavItem,
+                  {
                       title: 'License',
                       href: editLicense(),
                       icon: null,

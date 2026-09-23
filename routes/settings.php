@@ -12,6 +12,7 @@ use App\Http\Controllers\Settings\PrinterWizardController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\RestoreController;
 use App\Http\Controllers\Settings\SecurityController;
+use App\Http\Controllers\Settings\ShopSyncController;
 use App\Http\Controllers\Settings\StorageSettingsController;
 use App\Http\Controllers\Settings\UpdateManagerController;
 use Illuminate\Auth\Middleware\RequirePassword;
@@ -43,7 +44,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
 });
 
 Route::middleware(['auth', 'verified', 'business'])->group(function () {
+    Route::get('settings/shops/status', [ShopSyncController::class, 'status'])->name('shops.status');
+    Route::get('settings/shops', [ShopSyncController::class, 'edit'])->name('shops.edit');
+    Route::post('settings/shops/link', [ShopSyncController::class, 'link'])
+        ->middleware('throttle:sensitive')
+        ->name('shops.link');
+    Route::post('settings/shops/join', [ShopSyncController::class, 'join'])
+        ->middleware('throttle:sensitive')
+        ->name('shops.join');
+    Route::post('settings/shops/sync', [ShopSyncController::class, 'syncNow'])
+        ->middleware('throttle:30,1')
+        ->name('shops.sync');
+    Route::post('settings/shops/join-code', [ShopSyncController::class, 'regenerate'])
+        ->middleware('throttle:sensitive')
+        ->name('shops.regenerate');
+
     Route::get('settings/license', [LicenseController::class, 'edit'])->name('license.edit');
+    Route::post('settings/license/edition-request', [LicenseController::class, 'storeEditionRequest'])
+        ->middleware('throttle:sensitive')
+        ->name('license.edition-request');
     Route::post('settings/license/activate-online', [LicenseController::class, 'activateOnline'])
         ->middleware('throttle:sensitive')
         ->name('license.activate-online');

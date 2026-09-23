@@ -27,8 +27,10 @@ export default function StockCountsCreate({
                             Start stock count
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Creates a draft covering every active product at
-                            the branch. Counted quantities are entered next.
+                            Includes every active product. Products with no
+                            stock yet start at system qty 0 — useful for opening
+                            stock. Next: enter counted quantities, save, then
+                            complete.
                         </p>
                     </div>
                     <Button

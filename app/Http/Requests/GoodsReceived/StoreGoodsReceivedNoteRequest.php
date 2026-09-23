@@ -3,9 +3,11 @@
 namespace App\Http\Requests\GoodsReceived;
 
 use App\Models\GoodsReceivedNote;
+use App\Support\Money\Money;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class StoreGoodsReceivedNoteRequest extends FormRequest
 {
@@ -51,16 +53,52 @@ class StoreGoodsReceivedNoteRequest extends FormRequest
             'items.*.product_id' => [
                 'required',
                 'integer',
-                'distinct',
                 Rule::exists('products', 'id')->where('business_id', $businessId),
             ],
+            'items.*.product_pack_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('product_packs', 'id')->where('business_id', $businessId)->where('is_active', true),
+            ],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:1000000'],
-            'items.*.unit_cost' => ['required', 'integer', 'min:0'],
+            'items.*.unit_cost' => ['required', 'numeric', 'min:0'],
             'items.*.purchase_order_item_id' => [
                 'nullable',
                 'integer',
                 Rule::exists('purchase_order_items', 'id')->where('business_id', $businessId),
             ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function validated($key = null, $default = null): mixed
+    {
+        $data = parent::validated($key, $default);
+
+        if ($key !== null) {
+            return $data;
+        }
+
+        $currency = app(TenantContext::class)->business()?->currency
+            ?? throw ValidationException::withMessages([
+                'currency' => 'Business currency is required to save money amounts.',
+            ]);
+
+        return [
+            ...$data,
+            'items' => collect($data['items'] ?? [])->map(function (array $item, int $index) use ($currency): array {
+                try {
+                    $item['unit_cost'] = Money::toMinor($item['unit_cost'], $currency);
+                } catch (\InvalidArgumentException) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.unit_cost" => 'Enter a valid amount.',
+                    ]);
+                }
+
+                return $item;
+            })->values()->all(),
         ];
     }
 }

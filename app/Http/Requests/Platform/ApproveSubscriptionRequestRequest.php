@@ -28,6 +28,8 @@ class ApproveSubscriptionRequestRequest extends FormRequest
             'subscription_status' => ['nullable', 'string', Rule::in(SubscriptionStatus::values())],
             'subscription_ends_at' => ['nullable', 'date'],
             'reviewer_notes' => ['nullable', 'string', 'max:2000'],
+            'keep_branch_ids' => ['sometimes', 'array'],
+            'keep_branch_ids.*' => ['integer', 'distinct'],
         ];
     }
 }

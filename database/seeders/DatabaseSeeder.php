@@ -20,10 +20,10 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         PlatformSetting::setValue('support_email', ['value' => 'support@kospal.test']);
-        PlatformSetting::setValue('default_trial_days', ['value' => 30]);
+        PlatformSetting::setValue('default_trial_days', ['value' => 60]);
         PlatformSetting::setPaymentInstructions([
             'title' => 'How to pay for KOSPAL',
-            'body' => "Transfer the plan fee using the bank or mobile money details below.\nKeep your receipt or confirmation code, then submit it on the Subscription page for manual approval.",
+            'body' => "Pay using the bank or mobile money details below.\nKeep your receipt. Desktop shops send Machine ID plus requested edition, then activate the matching key. Web shops submit the transaction code for approval.",
             'bank_name' => 'Equity Bank Kenya',
             'account_name' => 'KOSPAL Limited',
             'account_number' => '0123456789',

@@ -1,7 +1,7 @@
 import type { NavKey } from '@/types/navigation';
 import type { Role } from '@/types/auth';
 
-export type LocaleCode = 'en' | 'fr' | 'rn';
+export type LocaleCode = 'en' | 'fr' | 'rn' | 'rw';
 
 export type BranchPlaceholder = {
     id: number;

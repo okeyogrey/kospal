@@ -22,6 +22,8 @@ class ActivateOfflineLicenseRequest extends FormRequest
     {
         return [
             'activation_code' => ['required', 'string', 'min:20', 'max:4000'],
+            'keep_branch_ids' => ['sometimes', 'array'],
+            'keep_branch_ids.*' => ['integer', 'distinct'],
         ];
     }
 }

@@ -22,6 +22,8 @@ class ActivateOnlineLicenseRequest extends FormRequest
     {
         return [
             'license_key' => ['required', 'string', 'min:20', 'max:4000'],
+            'keep_branch_ids' => ['sometimes', 'array'],
+            'keep_branch_ids.*' => ['integer', 'distinct'],
         ];
     }
 }

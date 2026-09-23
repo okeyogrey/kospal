@@ -132,7 +132,7 @@ class PurchaseOrderController extends Controller
         $purchaseOrder->load([
             'items.product:id,name,sku',
             'supplier:id,name',
-            'branch:id,name',
+            'branch:id,business_id,name',
             'creator:id,name',
             'sender:id,name',
             'canceller:id,name',
@@ -151,6 +151,11 @@ class PurchaseOrderController extends Controller
                 'metadata' => $log->metadata,
                 'created_at' => $log->created_at?->toIso8601String(),
             ]);
+
+        $permissions = [
+            'send' => $tenant->user()?->can('send', $purchaseOrder) ?? false,
+            'cancel' => $tenant->user()?->can('cancel', $purchaseOrder) ?? false,
+        ];
 
         return Inertia::render('purchase-orders/show', [
             'order' => [
@@ -177,10 +182,7 @@ class PurchaseOrderController extends Controller
                 ])->values(),
             ],
             'activity' => $activity,
-            'permissions' => [
-                'send' => $tenant->user()?->can('send', $purchaseOrder) ?? false,
-                'cancel' => $tenant->user()?->can('cancel', $purchaseOrder) ?? false,
-            ],
+            'permissions' => $permissions,
             'currency' => $tenant->business()?->currency,
         ]);
     }

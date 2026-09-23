@@ -45,6 +45,8 @@ class Sale extends Model
         'held_at',
         'held_label',
         'resumed_from_id',
+        'sync_conflict_reason',
+        'sync_conflict_at',
     ];
 
     protected function casts(): array
@@ -60,6 +62,7 @@ class Sale extends Model
             'change_given' => 'integer',
             'voided_at' => 'datetime',
             'held_at' => 'datetime',
+            'sync_conflict_at' => 'datetime',
         ];
     }
 

@@ -6,6 +6,7 @@ use App\Contracts\FeatureFlagService;
 use App\Enums\BusinessRole;
 use App\Enums\InvitationStatus;
 use App\Models\Branch;
+use App\Models\BranchAssignment;
 use App\Models\Business;
 use App\Models\BusinessMembership;
 use App\Models\Invitation;
@@ -13,6 +14,7 @@ use App\Models\User;
 use App\Notifications\BusinessInvitationNotification;
 use App\Support\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 
 class StaffInvitationService
@@ -74,10 +76,8 @@ class StaffInvitationService
             'branch_ids' => $validatedBranchIds,
         ]);
 
-        $user = User::query()->where('email', $email)->first();
-        if ($user) {
-            $user->notify(new BusinessInvitationNotification($invitation));
-        }
+        Notification::route('mail', $email)
+            ->notify(new BusinessInvitationNotification($invitation));
 
         $this->audit->log(
             action: 'staff.invited',
@@ -94,6 +94,40 @@ class StaffInvitationService
         return $invitation;
     }
 
+    /**
+     * Create an account for a new invitee and accept the invitation.
+     *
+     * @param  array{name: string, password: string}  $credentials
+     */
+    public function registerAndAccept(Invitation $invitation, array $credentials): BusinessMembership
+    {
+        if (! $invitation->isAcceptable()) {
+            throw ValidationException::withMessages([
+                'invitation' => 'This invitation is no longer valid.',
+            ]);
+        }
+
+        if (User::query()->where('email', $invitation->email)->exists()) {
+            throw ValidationException::withMessages([
+                'invitation' => 'An account already exists for this email. Log in to accept the invitation.',
+            ]);
+        }
+
+        $business = $invitation->business()->firstOrFail();
+        $this->limits->assertCanAddStaff($business);
+
+        return DB::transaction(function () use ($invitation, $credentials, $business) {
+            $user = User::query()->create([
+                'name' => $credentials['name'],
+                'email' => $invitation->email,
+                'password' => $credentials['password'],
+                'email_verified_at' => now(),
+            ]);
+
+            return $this->acceptForUser($invitation, $user, $business);
+        });
+    }
+
     public function accept(Invitation $invitation, User $user): BusinessMembership
     {
         if (! $invitation->isAcceptable()) {
@@ -104,54 +138,64 @@ class StaffInvitationService
 
         if (strcasecmp($invitation->email, $user->email) !== 0) {
             throw ValidationException::withMessages([
-                'invitation' => 'This invitation was sent to a different email address.',
+                'invitation' => 'This invitation was sent to '.$invitation->email.'. Sign out and continue with that email.',
             ]);
         }
 
         $business = $invitation->business()->firstOrFail();
         $this->limits->assertCanAddStaff($business);
 
-        return DB::transaction(function () use ($invitation, $user, $business) {
-            $membership = BusinessMembership::query()->updateOrCreate(
-                [
-                    'business_id' => $business->id,
-                    'user_id' => $user->id,
-                ],
-                [
-                    'role' => $invitation->role,
-                    'is_active' => true,
-                    'joined_at' => now(),
-                ],
-            );
-
-            $this->syncBranchAccess($business, $user, $invitation->role, $invitation->branch_ids ?? []);
-
-            $invitation->update([
-                'status' => InvitationStatus::Accepted,
-                'accepted_at' => now(),
-                'accepted_user_id' => $user->id,
+        if (BusinessMembership::query()
+            ->forBusiness($business)
+            ->where('user_id', $user->id)
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'invitation' => 'You are already a member of this business.',
             ]);
+        }
 
-            if ($user->current_business_id === null) {
-                $user->forceFill([
-                    'current_business_id' => $business->id,
-                    'current_branch_id' => ($invitation->branch_ids[0] ?? null),
-                ])->save();
-            }
-
-            $this->audit->log(
-                action: 'staff.invitation_accepted',
-                auditable: $invitation,
-                metadata: [
-                    'membership_id' => $membership->id,
-                    'role' => $invitation->role->value,
-                ],
-                actor: $user,
-                businessId: $business->id,
-            );
-
-            return $membership;
+        return DB::transaction(function () use ($invitation, $user, $business) {
+            return $this->acceptForUser($invitation, $user, $business);
         });
+    }
+
+    protected function acceptForUser(Invitation $invitation, User $user, Business $business): BusinessMembership
+    {
+        $membership = BusinessMembership::query()->create([
+            'business_id' => $business->id,
+            'user_id' => $user->id,
+            'role' => $invitation->role,
+            'is_active' => true,
+            'joined_at' => now(),
+        ]);
+
+        $this->syncBranchAccess($business, $user, $invitation->role, $invitation->branch_ids ?? []);
+
+        $invitation->update([
+            'status' => InvitationStatus::Accepted,
+            'accepted_at' => now(),
+            'accepted_user_id' => $user->id,
+        ]);
+
+        if ($user->current_business_id === null) {
+            $user->forceFill([
+                'current_business_id' => $business->id,
+                'current_branch_id' => ($invitation->branch_ids[0] ?? null),
+            ])->save();
+        }
+
+        $this->audit->log(
+            action: 'staff.invitation_accepted',
+            auditable: $invitation,
+            metadata: [
+                'membership_id' => $membership->id,
+                'role' => $invitation->role->value,
+            ],
+            actor: $user,
+            businessId: $business->id,
+        );
+
+        return $membership;
     }
 
     public function revoke(Invitation $invitation, User $actor): void
@@ -273,25 +317,39 @@ class StaffInvitationService
      */
     protected function syncBranchAccess(Business $business, User $user, BusinessRole $role, array $branchIds): void
     {
-        DB::table('branch_user')
+        $existing = BranchAssignment::query()
             ->where('business_id', $business->id)
             ->where('user_id', $user->id)
-            ->delete();
+            ->get();
 
         // Managers may optionally be limited to specific branches. Empty means
         // unrestricted (all active branches) via ResolvesTenant::allowedBranches.
         // Cashiers and clerks always require at least one assignment.
-        if ($branchIds === [] && ! $role->requiresBranchAssignment()) {
-            return;
+        $keep = ($branchIds === [] && ! $role->requiresBranchAssignment())
+            ? []
+            : $branchIds;
+
+        $keepIds = array_map(static fn (int|string $id): int => (int) $id, $keep);
+
+        foreach ($existing as $assignment) {
+            if (! in_array((int) $assignment->branch_id, $keepIds, true)) {
+                $assignment->delete();
+            }
         }
 
-        foreach ($branchIds as $branchId) {
-            DB::table('branch_user')->insert([
+        foreach ($keepIds as $branchId) {
+            $already = $existing->first(
+                fn (BranchAssignment $assignment): bool => (int) $assignment->branch_id === $branchId,
+            );
+
+            if ($already !== null) {
+                continue;
+            }
+
+            BranchAssignment::query()->create([
                 'business_id' => $business->id,
                 'branch_id' => $branchId,
                 'user_id' => $user->id,
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
         }
     }

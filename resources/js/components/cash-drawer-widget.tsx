@@ -41,12 +41,12 @@ export function CashDrawerWidget() {
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-9 gap-1.5"
+                className="h-9 w-9 gap-0 px-0 sm:w-auto sm:gap-1.5 sm:px-3"
                 asChild
             >
-                <a href={`/cash-sessions/${session.id}`}>
+                <a href={`/cash-sessions/${session.id}`} aria-label="Drawer open">
                     <Banknote className="size-3.5" />
-                    Drawer open
+                    <span className="hidden sm:inline">Drawer open</span>
                 </a>
             </Button>
         );
@@ -78,12 +78,13 @@ export function CashDrawerWidget() {
                 <Button
                     type="button"
                     size="sm"
-                    className="h-9 gap-1.5"
+                    className="h-9 w-9 gap-0 px-0 sm:w-auto sm:gap-1.5 sm:px-3"
                     disabled={processing}
+                    aria-label="Open drawer"
                     onClick={() => setOpenDialog(true)}
                 >
                     <Banknote className="size-3.5" />
-                    Open drawer
+                    <span className="hidden sm:inline">Open drawer</span>
                 </Button>
             </div>
 

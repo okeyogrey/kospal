@@ -164,7 +164,7 @@ class ExpenseController extends Controller
         abort_unless($business, 403);
 
         $expense->load([
-            'branch:id,name',
+            'branch:id,business_id,name',
             'category:id,name,is_active',
             'creator:id,name',
             'receipt',
@@ -186,13 +186,15 @@ class ExpenseController extends Controller
             ])
             ->values();
 
+        $permissions = [
+            'update' => $tenant->user()?->can('update', $expense) ?? false,
+            'delete' => $tenant->user()?->can('delete', $expense) ?? false,
+        ];
+
         return Inertia::render('expenses/show', [
             'expense' => $this->detailPayload($expense, $attachments),
             'activity' => $activity,
-            'permissions' => [
-                'update' => $tenant->user()?->can('update', $expense) ?? false,
-                'delete' => $tenant->user()?->can('delete', $expense) ?? false,
-            ],
+            'permissions' => $permissions,
             'currency' => $business->currency,
         ]);
     }

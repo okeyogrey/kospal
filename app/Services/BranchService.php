@@ -13,6 +13,7 @@ class BranchService
 {
     public function __construct(
         protected FeatureFlagService $limits,
+        protected PlanBranchCapService $branchCaps,
         protected AuditLogger $audit,
     ) {}
 
@@ -70,7 +71,8 @@ class BranchService
         $willBeActive = array_key_exists('is_active', $data) ? (bool) $data['is_active'] : $wasActive;
 
         if (! $wasActive && $willBeActive) {
-            $this->limits->assertCanAddBranch($branch->business);
+            $this->branchCaps->assertCanReopen($branch);
+            $data['plan_paused_max_branches'] = null;
         }
 
         if ($wasActive && ! $willBeActive) {

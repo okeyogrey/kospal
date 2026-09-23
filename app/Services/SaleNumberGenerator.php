@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Business;
 use App\Models\SaleSequence;
+use App\Models\SyncLink;
 
 class SaleNumberGenerator
 {
@@ -17,7 +18,7 @@ class SaleNumberGenerator
         $next = $sequence->last_number + 1;
         $sequence->update(['last_number' => $next]);
 
-        return 'SAL-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+        return 'SAL-'.$this->devicePrefix($business).str_pad((string) $next, 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -30,7 +31,7 @@ class SaleNumberGenerator
         $next = $sequence->last_return_number + 1;
         $sequence->update(['last_return_number' => $next]);
 
-        return 'RET-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+        return 'RET-'.$this->devicePrefix($business).str_pad((string) $next, 6, '0', STR_PAD_LEFT);
     }
 
     protected function lockSequence(Business $business): SaleSequence
@@ -54,5 +55,20 @@ class SaleNumberGenerator
         }
 
         return $sequence;
+    }
+
+    /**
+     * Linked computers share one sale-number sequence space.
+     * A short device tag keeps two tills from issuing the same number.
+     */
+    private function devicePrefix(Business $business): string
+    {
+        $deviceUuid = SyncLink::query()->where('business_id', $business->id)->value('device_uuid');
+
+        if (! is_string($deviceUuid) || $deviceUuid === '') {
+            return '';
+        }
+
+        return strtoupper(substr(str_replace('-', '', $deviceUuid), 0, 4)).'-';
     }
 }

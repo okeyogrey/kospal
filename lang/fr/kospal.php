@@ -7,6 +7,14 @@ return [
         'tagline' => 'Gestion commerciale pour le Kenya et le Burundi',
     ],
 
+    'pwa' => [
+        'install_title' => 'Installer KOSPAL',
+        'install_ios' => 'Appuyez sur Partager, puis sur Sur l’écran d’accueil. Ouvrez-le depuis l’écran d’accueil pour l’utiliser comme une application.',
+        'install_android' => 'Dans Chrome, appuyez sur ⋮ puis Installer l’application — pas Ajouter à l’écran d’accueil. Si seule cette dernière option apparaît, Chrome gardera la barre d’adresse.',
+        'install_button' => 'Installer l’application',
+        'dismiss' => 'Plus tard',
+    ],
+
     'receipt' => [
         'title' => 'Reçu',
         'invoice' => 'Facture / Reçu',
@@ -84,7 +92,8 @@ return [
         'stock_counts' => 'Inventaires physiques',
         'inventory_timeline' => 'Historique stock',
         'inventory_valuation' => 'Valorisation stock',
-        'sales' => 'Ventes',
+        'pos' => 'Caisse',
+        'sales' => 'Historique ventes',
         'customers' => 'Clients',
         'expenses' => 'Dépenses',
         'suppliers' => 'Fournisseurs',
@@ -95,8 +104,10 @@ return [
         'cash_sessions' => 'Gestion caisse',
         'branches' => 'Agences',
         'subscription' => 'Abonnement',
+        'referrals' => 'Parrainage',
         'platform_subscriptions' => 'Revue des abonnements',
         'platform_payment_instructions' => 'Instructions de paiement',
+        'platform_referrals' => 'Parrainages',
         'settings' => 'Paramètres',
     ],
 
@@ -108,9 +119,19 @@ return [
         'no_notifications' => 'Aucune notification pour le moment',
         'profile' => 'Profil',
         'log_out' => 'Se déconnecter',
+        'open_pos' => 'Ouvrir la caisse',
     ],
 
     'pages' => [
+        'auth' => [
+            'login' => 'Se connecter',
+            'email' => 'Adresse e-mail',
+            'password' => 'Mot de passe',
+            'forgot_password' => 'Mot de passe oublié ?',
+            'remember' => 'Se souvenir de moi',
+            'no_account' => 'Pas encore de compte ?',
+            'sign_up' => 'Créer un compte',
+        ],
         'dashboard' => [
             'title' => 'Tableau de bord',
             'description' => 'Suivez les ventes, les stocks et l’activité récente de votre commerce.',
@@ -215,6 +236,9 @@ return [
             'empty_cart' => 'Scannez un code-barres ou touchez un produit pour commencer.',
             'resumed' => 'Reprise',
             'negotiate_price' => 'Modifier le prix',
+            'negotiable' => 'Négociable',
+            'min_price' => 'Min',
+            'negotiated' => 'Négocié',
             'list_price' => 'Liste',
             'customer' => 'Client',
             'walk_in' => 'Passage',
@@ -240,6 +264,9 @@ return [
             'held_sales_hint' => 'Reprendre un panier mis en attente pour cette agence.',
             'no_held' => 'Aucune vente en attente pour cette agence.',
             'complete' => 'Finaliser la vente',
+            'pay' => 'Encaisser',
+            'close_cart' => 'Fermer le panier',
+            'history_short' => 'Ventes',
             'processing' => 'Traitement…',
             'confirm_title' => 'Confirmer la vente',
             'confirm_description' => 'Le stock sera déduit et le paiement enregistré.',
@@ -249,7 +276,8 @@ return [
             'saving' => 'Enregistrement…',
             'confirm_charge' => 'Confirmer et encaisser',
             'manager_approval' => 'Approbation du responsable',
-            'manager_approval_hint' => 'Saisissez l’e-mail/téléphone et le mot de passe d’un propriétaire ou responsable.',
+            'manager_approval_hint' => 'Demandez à un responsable de saisir son code PIN à 6 chiffres. Chaque responsable a un PIN unique.',
+            'manager_pin' => 'PIN responsable',
             'manager_login' => 'Identifiant responsable',
             'manager_password' => 'Mot de passe',
             'approve_charge' => 'Approuver et encaisser',
@@ -341,7 +369,7 @@ return [
             'no_results_title' => 'Aucun résultat',
             'no_results_description' => 'Essayez une autre période ou un autre filtre d’agence.',
             'upgrade_title' => 'Passez à un plan supérieur pour débloquer ce rapport',
-            'upgrade_cta' => 'Voir les plans d’abonnement',
+            'upgrade_cta' => 'Comparer les éditions',
             'upgrade_teaser_title' => 'Besoin d’analyses plus approfondies ?',
             'upgrade_teaser_description' => 'Pro débloque les tendances de ventes, la performance produit, les estimations de marge brute et l’export CSV.',
             'current_plan' => 'Plan actuel',
@@ -395,7 +423,7 @@ return [
 
     'welcome' => [
         'title' => 'La clarté commerciale à chaque comptoir',
-        'subtitle' => 'KOSPAL aide les petits commerces physiques du Kenya et du Burundi à gérer produits, stocks, ventes et personnel — en anglais, français ou kirundi.',
+        'subtitle' => 'KOSPAL aide les petits commerces physiques du Kenya et du Burundi à gérer produits, stocks, ventes et personnel — en anglais, français, kirundi ou kinyarwanda.',
         'cta_primary' => 'Ouvrir le tableau de bord',
         'cta_login' => 'Se connecter',
         'cta_register' => 'Créer un compte',

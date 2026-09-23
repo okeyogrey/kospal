@@ -24,6 +24,8 @@ type BranchRow = {
     opens_at: string | null;
     closes_at: string | null;
     is_active: boolean;
+    plan_paused: boolean;
+    can_reopen: boolean;
 };
 
 type BusinessHours = {
@@ -241,7 +243,9 @@ export default function BranchesIndex({
                                                     >
                                                         {branch.is_active
                                                             ? 'Active'
-                                                            : 'Inactive'}
+                                                            : branch.plan_paused
+                                                              ? 'Paused for plan'
+                                                              : 'Inactive'}
                                                     </Badge>
                                                 </div>
                                                 <p className="text-sm text-muted-foreground">
@@ -262,35 +266,76 @@ export default function BranchesIndex({
                                                 </p>
                                             </div>
                                             <div className="flex flex-wrap gap-2">
-                                                <Form
-                                                    {...update.form(branch.id)}
-                                                    options={{
-                                                        preserveScroll: true,
-                                                    }}
-                                                >
-                                                    {() => (
-                                                        <>
-                                                            <input
-                                                                type="hidden"
-                                                                name="is_active"
-                                                                value={
-                                                                    branch.is_active
-                                                                        ? 0
-                                                                        : 1
-                                                                }
-                                                            />
-                                                            <Button
-                                                                type="submit"
-                                                                size="sm"
-                                                                variant="outline"
-                                                            >
-                                                                {branch.is_active
-                                                                    ? 'Deactivate'
-                                                                    : 'Activate'}
-                                                            </Button>
-                                                        </>
-                                                    )}
-                                                </Form>
+                                                {branch.is_active ? (
+                                                    <Form
+                                                        {...update.form(
+                                                            branch.id,
+                                                        )}
+                                                        options={{
+                                                            preserveScroll: true,
+                                                        }}
+                                                    >
+                                                        {({ errors }) => (
+                                                            <>
+                                                                <input
+                                                                    type="hidden"
+                                                                    name="is_active"
+                                                                    value={0}
+                                                                />
+                                                                <Button
+                                                                    type="submit"
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                >
+                                                                    Deactivate
+                                                                </Button>
+                                                                <InputError
+                                                                    message={
+                                                                        errors.is_active
+                                                                    }
+                                                                />
+                                                            </>
+                                                        )}
+                                                    </Form>
+                                                ) : branch.plan_paused &&
+                                                  !branch.can_reopen ? (
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Paused for the current
+                                                        plan. Upgrade to reopen.
+                                                        Swapping is not allowed.
+                                                    </p>
+                                                ) : (
+                                                    <Form
+                                                        {...update.form(
+                                                            branch.id,
+                                                        )}
+                                                        options={{
+                                                            preserveScroll: true,
+                                                        }}
+                                                    >
+                                                        {({ errors }) => (
+                                                            <>
+                                                                <input
+                                                                    type="hidden"
+                                                                    name="is_active"
+                                                                    value={1}
+                                                                />
+                                                                <Button
+                                                                    type="submit"
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                >
+                                                                    Activate
+                                                                </Button>
+                                                                <InputError
+                                                                    message={
+                                                                        errors.is_active
+                                                                    }
+                                                                />
+                                                            </>
+                                                        )}
+                                                    </Form>
+                                                )}
                                                 <Form
                                                     {...destroy.form(
                                                         branch.id,
@@ -323,8 +368,9 @@ export default function BranchesIndex({
                         {!limits.can_add_branch ? (
                             <p className="text-sm text-muted-foreground">
                                 Active branch limit reached for the{' '}
-                                {limits.plan} plan. Deactivate a branch or
-                                request an upgrade.
+                                {limits.plan} plan. Upgrade to add more
+                                locations. Paused shops cannot be swapped back
+                                in.
                             </p>
                         ) : (
                             <form

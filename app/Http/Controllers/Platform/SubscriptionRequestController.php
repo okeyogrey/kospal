@@ -31,6 +31,7 @@ class SubscriptionRequestController extends Controller
         $requests = SubscriptionRequest::query()
             ->with([
                 'business:id,name,plan,subscription_status,subscription_ends_at',
+                'business.branches:id,business_id,name,is_active',
                 'requestedBy:id,name,email',
                 'reviewedBy:id,name',
             ])
@@ -57,6 +58,15 @@ class SubscriptionRequestController extends Controller
                     'plan' => $item->business->plan->value,
                     'subscription_status' => $item->business->subscription_status->value,
                     'subscription_ends_at' => $item->business->subscription_ends_at?->toDateString(),
+                    'branches' => $item->business->branches
+                        ->sortBy('name')
+                        ->map(fn ($branch) => [
+                            'id' => $branch->id,
+                            'name' => $branch->name,
+                            'is_active' => $branch->is_active,
+                        ])
+                        ->values()
+                        ->all(),
                 ],
                 'requested_by' => [
                     'name' => $item->requestedBy?->name,
@@ -66,7 +76,10 @@ class SubscriptionRequestController extends Controller
             ]);
 
         $businesses = Business::query()
-            ->with('owner:id,name,email')
+            ->with([
+                'owner:id,name,email',
+                'branches:id,business_id,name,is_active',
+            ])
             ->latest()
             ->limit(50)
             ->get()
@@ -77,6 +90,15 @@ class SubscriptionRequestController extends Controller
                 'subscription_status' => $business->subscription_status->value,
                 'subscription_ends_at' => $business->subscription_ends_at?->toDateString(),
                 'owner' => $business->owner?->only(['name', 'email']),
+                'branches' => $business->branches
+                    ->sortBy('name')
+                    ->map(fn ($branch) => [
+                        'id' => $branch->id,
+                        'name' => $branch->name,
+                        'is_active' => $branch->is_active,
+                    ])
+                    ->values()
+                    ->all(),
             ]);
 
         return Inertia::render('platform/subscription-requests/index', [
@@ -86,6 +108,9 @@ class SubscriptionRequestController extends Controller
                 'status' => $status,
             ],
             'plans' => Plan::values(),
+            'plan_max_branches' => collect(Plan::cases())
+                ->mapWithKeys(fn (Plan $plan) => [$plan->value => $plan->maxBranches()])
+                ->all(),
             'subscription_statuses' => SubscriptionStatus::values(),
             'default_subscription_days' => (int) config('kospal.default_subscription_days', 30),
         ]);

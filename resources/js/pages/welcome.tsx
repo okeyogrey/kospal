@@ -28,7 +28,7 @@ export default function Welcome() {
                     }}
                 />
 
-                <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
+                <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 pt-[max(1.5rem,env(safe-area-inset-top))]">
                     <div className="flex items-center gap-3">
                         <AppLogoIcon className="size-10 text-[oklch(0.4_0.1_165)]" />
                         <span className="font-display text-xl font-semibold tracking-wide">
@@ -59,12 +59,12 @@ export default function Welcome() {
                     </nav>
                 </header>
 
-                <main className="relative z-10 mx-auto flex min-h-[calc(100svh-5.5rem)] w-full max-w-6xl flex-col justify-end px-6 pb-16 pt-8 md:justify-center md:pb-24">
-                    <div className="max-w-2xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <main className="relative z-10 mx-auto flex min-h-[calc(100svh-5.5rem)] w-full max-w-6xl flex-col justify-end px-6 pt-8 pb-16 md:justify-center md:pb-24">
+                    <div className="max-w-2xl animate-in space-y-6 duration-700 fade-in slide-in-from-bottom-4">
                         <p className="font-display text-5xl font-semibold tracking-tight text-[oklch(0.9_0.08_90)] sm:text-6xl md:text-7xl">
                             {t('brand.name')}
                         </p>
-                        <h1 className="max-w-xl text-xl font-medium leading-snug text-[oklch(0.96_0.01_165)] sm:text-2xl">
+                        <h1 className="max-w-xl text-xl leading-snug font-medium text-[oklch(0.96_0.01_165)] sm:text-2xl">
                             {t('welcome.title')}
                         </h1>
                         <p className="max-w-lg text-sm leading-relaxed text-[oklch(0.88_0.02_165)] sm:text-base">

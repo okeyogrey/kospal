@@ -64,6 +64,9 @@
 }
 
 :root {
+    --keyboard-inset: 0px;
+    --vv-height: 100dvh;
+    --vv-offset-top: 0px;
     --background: oklch(0.985 0.008 165);
     --foreground: oklch(0.22 0.03 165);
     --card: oklch(0.995 0.004 165);
@@ -140,7 +143,26 @@
     }
 
     body {
-        @apply bg-background text-foreground font-sans antialiased;
+        @apply bg-background font-sans text-foreground antialiased;
+    }
+
+    html.kospal-standalone,
+    html.kospal-standalone body {
+        overscroll-behavior: none;
+    }
+
+    select {
+        @apply bg-background text-foreground;
+        color-scheme: light;
+    }
+
+    select option {
+        background-color: var(--popover);
+        color: var(--popover-foreground);
+    }
+
+    .dark select {
+        color-scheme: dark;
     }
 }
 
@@ -162,5 +184,13 @@
                 transparent 55%
             ),
             var(--background);
+    }
+}
+
+@media (max-width: 1023px) {
+    .group\/pos:has(#pos_search:focus) [data-pos-dock] {
+        visibility: hidden;
+        pointer-events: none;
+        transform: translateY(100%);
     }
 }

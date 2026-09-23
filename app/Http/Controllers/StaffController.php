@@ -82,6 +82,7 @@ class StaffController extends Controller
             ],
             'settings' => [
                 'cashiers_can_log_expenses' => (bool) $business->cashiers_can_log_expenses,
+                'cashiers_can_approve_price_overrides' => (bool) $business->cashiers_can_approve_price_overrides,
                 'can_edit' => $tenant->role() === BusinessRole::Owner,
             ],
         ]);
@@ -94,13 +95,15 @@ class StaffController extends Controller
 
         $validated = $request->validate([
             'cashiers_can_log_expenses' => ['required', 'boolean'],
+            'cashiers_can_approve_price_overrides' => ['required', 'boolean'],
         ]);
 
         $business->update([
             'cashiers_can_log_expenses' => $validated['cashiers_can_log_expenses'],
+            'cashiers_can_approve_price_overrides' => $validated['cashiers_can_approve_price_overrides'],
         ]);
 
-        return back()->with('success', 'Staff expense settings updated.');
+        return back()->with('success', 'Staff settings updated.');
     }
 
     public function invite(

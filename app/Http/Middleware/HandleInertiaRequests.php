@@ -4,6 +4,8 @@ namespace App\Http\Middleware;
 
 use App\Contracts\FeatureFlagService;
 use App\Contracts\LicensingService;
+use App\Models\SyncConflict;
+use App\Models\SyncLink;
 use App\Services\CashSessionService;
 use App\Services\StaffShiftService;
 use App\Support\Deployment;
@@ -13,6 +15,7 @@ use App\Support\Tenancy\TenantContext;
 use App\Support\Time\BusinessClock;
 use App\Support\Time\OperatingHours;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -135,6 +138,22 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
             ],
+            'shopSync' => function () use ($business): array {
+                if ($business === null || ! Schema::hasTable('sync_conflicts')) {
+                    return [
+                        'linked' => false,
+                        'conflicts' => 0,
+                    ];
+                }
+
+                return [
+                    'linked' => SyncLink::query()->where('business_id', $business->id)->exists(),
+                    'conflicts' => SyncConflict::query()
+                        ->where('business_id', $business->id)
+                        ->whereNull('resolved_at')
+                        ->count(),
+                ];
+            },
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }

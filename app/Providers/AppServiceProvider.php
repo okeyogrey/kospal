@@ -26,10 +26,13 @@ use App\Models\SupplierInvoice;
 use App\Models\SupplierPayment;
 use App\Policies\ProductivityPolicy;
 use App\Policies\ReportPolicy;
+use App\Services\Sync\SyncCatalog;
+use App\Services\Sync\SyncModelObserver;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -37,7 +40,9 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
@@ -56,10 +61,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configurePublicUrl();
         $this->configureAuthorization();
         $this->configureRateLimiting();
         $this->configureLocalePersistence();
         $this->configureRouteBindings();
+        $this->configureShopSync();
     }
 
     protected function configureAuthorization(): void
@@ -85,6 +92,29 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('attachments', function (Request $request) {
             return Limit::perMinute(20)->by((string) ($request->user()?->id ?: $request->ip()));
         });
+
+        RateLimiter::for('sync', function (Request $request) {
+            $token = $request->bearerToken();
+
+            return Limit::perMinute(120)->by($token !== null && $token !== '' ? hash('sha256', $token) : (string) $request->ip());
+        });
+    }
+
+    protected function configureShopSync(): void
+    {
+        foreach (SyncCatalog::models() as $class) {
+            $class::creating(function (Model $model): void {
+                if (! SyncCatalog::hasPublicUuidColumn($model->getTable())) {
+                    return;
+                }
+
+                if (blank($model->getAttribute('public_uuid'))) {
+                    $model->setAttribute('public_uuid', (string) Str::uuid());
+                }
+            });
+
+            $class::observe(SyncModelObserver::class);
+        }
     }
 
     protected function configureLocalePersistence(): void
@@ -116,6 +146,30 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    protected function configurePublicUrl(): void
+    {
+        if ($this->app->runningInConsole()) {
+            return;
+        }
+
+        $request = request();
+        $host = $request->getHost();
+        $isTunnel = str_ends_with($host, '.trycloudflare.com')
+            || str_contains($host, 'ngrok-free.app')
+            || str_contains($host, 'ngrok.io');
+        $isLoopback = in_array($host, ['127.0.0.1', 'localhost'], true);
+
+        if (! $isLoopback && ! $isTunnel) {
+            return;
+        }
+
+        URL::forceRootUrl($request->getSchemeAndHttpHost());
+
+        if ($request->isSecure() || $request->header('X-Forwarded-Proto') === 'https') {
+            URL::forceScheme('https');
+        }
     }
 
     protected function configureRouteBindings(): void

@@ -16,10 +16,12 @@ class SubscriptionService
 {
     public function __construct(
         protected AuditLogger $audit,
+        protected PlanBranchCapService $branchCaps,
+        protected ReferralService $referrals,
     ) {}
 
     /**
-     * @param  array{requested_plan: string, transaction_code: string, notes?: string|null}  $data
+     * @param  array{requested_plan: string, transaction_code?: string|null, notes?: string|null}  $data
      */
     public function submitRequest(Business $business, User $actor, array $data): SubscriptionRequest
     {
@@ -30,17 +32,23 @@ class SubscriptionService
 
         if ($hasPending) {
             throw ValidationException::withMessages([
-                'requested_plan' => 'You already have a pending subscription request. Wait for review or contact support.',
+                'requested_plan' => 'You already have a pending edition request. Wait until it is fulfilled or contact support.',
             ]);
         }
 
+        $requested = Plan::from($data['requested_plan']);
+        $transactionCode = $data['transaction_code'] ?? null;
+        $transactionCode = is_string($transactionCode) && trim($transactionCode) !== ''
+            ? trim($transactionCode)
+            : null;
+
         $subscriptionRequest = SubscriptionRequest::query()->create([
             'business_id' => $business->id,
-            'requested_plan' => Plan::from($data['requested_plan']),
+            'requested_plan' => $requested,
             'current_plan' => $business->plan,
             'status' => SubscriptionRequestStatus::Pending,
             'notes' => $data['notes'] ?? null,
-            'transaction_code' => $data['transaction_code'],
+            'transaction_code' => $transactionCode,
             'requested_by_user_id' => $actor->id,
         ]);
 
@@ -48,8 +56,10 @@ class SubscriptionService
             action: 'subscription.requested',
             auditable: $subscriptionRequest,
             metadata: [
-                'requested_plan' => $subscriptionRequest->requested_plan->value,
-                'transaction_code' => $subscriptionRequest->transaction_code,
+                'requested_plan' => $requested->value,
+                'current_plan' => $business->plan->value,
+                'change_type' => $business->plan->changeTypeToward($requested)->value,
+                'transaction_code' => $transactionCode,
             ],
             actor: $actor,
             businessId: $business->id,
@@ -64,6 +74,7 @@ class SubscriptionService
      *     subscription_status?: string|null,
      *     subscription_ends_at?: string|null,
      *     reviewer_notes?: string|null,
+     *     keep_branch_ids?: list<int|string>,
      * }  $data
      */
     public function approveRequest(SubscriptionRequest $request, User $reviewer, array $data): SubscriptionRequest
@@ -86,6 +97,13 @@ class SubscriptionService
                 'subscription_status' => $business->subscription_status->value,
                 'subscription_ends_at' => $business->subscription_ends_at?->toDateString(),
             ];
+
+            $this->branchCaps->enforceOnPlanChange(
+                $business,
+                $plan,
+                $data['keep_branch_ids'] ?? [],
+                $reviewer,
+            );
 
             $business->update([
                 'plan' => $plan,
@@ -114,6 +132,10 @@ class SubscriptionService
                 actor: $reviewer,
                 businessId: $business->id,
             );
+
+            if ($status === SubscriptionStatus::Active) {
+                $this->referrals->applyToPayment($business->fresh());
+            }
 
             return $request->fresh();
         });
@@ -158,6 +180,7 @@ class SubscriptionService
      *     subscription_status: string,
      *     subscription_ends_at?: string|null,
      *     reviewer_notes?: string|null,
+     *     keep_branch_ids?: list<int|string>,
      * }  $data
      */
     public function updateBusinessSubscription(Business $business, User $actor, array $data): Business
@@ -168,27 +191,47 @@ class SubscriptionService
             'subscription_ends_at' => $business->subscription_ends_at?->toDateString(),
         ];
 
-        $business->update([
-            'plan' => Plan::from($data['plan']),
-            'subscription_status' => SubscriptionStatus::from($data['subscription_status']),
-            'subscription_ends_at' => $data['subscription_ends_at'] ?? null,
-        ]);
+        $plan = Plan::from($data['plan']);
 
-        $this->audit->log(
-            action: 'subscription.updated',
-            auditable: $business,
-            metadata: [
-                'previous' => $previous,
-                'plan' => $data['plan'],
-                'subscription_status' => $data['subscription_status'],
+        return DB::transaction(function () use ($business, $actor, $data, $previous, $plan) {
+            $this->branchCaps->enforceOnPlanChange(
+                $business,
+                $plan,
+                $data['keep_branch_ids'] ?? [],
+                $actor,
+            );
+
+            $business->update([
+                'plan' => $plan,
+                'subscription_status' => SubscriptionStatus::from($data['subscription_status']),
                 'subscription_ends_at' => $data['subscription_ends_at'] ?? null,
-                'reviewer_notes' => $data['reviewer_notes'] ?? null,
-            ],
-            actor: $actor,
-            businessId: $business->id,
-        );
+            ]);
 
-        return $business->fresh();
+            $this->audit->log(
+                action: 'subscription.updated',
+                auditable: $business,
+                metadata: [
+                    'previous' => $previous,
+                    'plan' => $data['plan'],
+                    'subscription_status' => $data['subscription_status'],
+                    'subscription_ends_at' => $data['subscription_ends_at'] ?? null,
+                    'reviewer_notes' => $data['reviewer_notes'] ?? null,
+                ],
+                actor: $actor,
+                businessId: $business->id,
+            );
+
+            $fresh = $business->fresh();
+
+            if (
+                $fresh->subscription_status === SubscriptionStatus::Active
+                && $previous['subscription_status'] !== SubscriptionStatus::Active->value
+            ) {
+                $this->referrals->applyToPayment($fresh);
+            }
+
+            return $fresh;
+        });
     }
 
     public function expireIfPastDue(Business $business): Business
@@ -217,5 +260,84 @@ class SubscriptionService
         }
 
         return $business;
+    }
+
+    /**
+     * Mark a pending request as fulfilled when a matching license is activated.
+     */
+    public function fulfillPendingForEdition(Business $business, Plan $edition, User $actor): void
+    {
+        $pending = SubscriptionRequest::query()
+            ->forBusiness($business)
+            ->where('status', SubscriptionRequestStatus::Pending)
+            ->where('requested_plan', $edition)
+            ->get();
+
+        foreach ($pending as $request) {
+            $request->update([
+                'status' => SubscriptionRequestStatus::Approved,
+                'reviewer_notes' => $request->reviewer_notes ?: 'Fulfilled by license activation.',
+                'reviewed_by_user_id' => $actor->id,
+                'reviewed_at' => now(),
+            ]);
+
+            $this->audit->log(
+                action: 'subscription.fulfilled_by_license',
+                auditable: $request->fresh(),
+                metadata: [
+                    'requested_plan' => $edition->value,
+                    'license_id' => $business->license_id,
+                ],
+                actor: $actor,
+                businessId: $business->id,
+            );
+        }
+    }
+
+    public function hasPendingRequest(Business $business): bool
+    {
+        return SubscriptionRequest::query()
+            ->forBusiness($business)
+            ->where('status', SubscriptionRequestStatus::Pending)
+            ->exists();
+    }
+
+    /**
+     * @return list<array{
+     *     id: int,
+     *     requested_plan: string,
+     *     current_plan: string,
+     *     change_type: string,
+     *     status: string,
+     *     notes: string|null,
+     *     transaction_code: string|null,
+     *     reviewer_notes: string|null,
+     *     reviewed_by: string|null,
+     *     created_at: string|null,
+     *     reviewed_at: string|null,
+     * }>
+     */
+    public function recentRequestsPayload(Business $business, int $limit = 20): array
+    {
+        return SubscriptionRequest::query()
+            ->forBusiness($business)
+            ->with(['reviewedBy:id,name'])
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->map(fn (SubscriptionRequest $request) => [
+                'id' => $request->id,
+                'requested_plan' => $request->requested_plan->value,
+                'current_plan' => $request->current_plan->value,
+                'change_type' => $request->changeType()->value,
+                'status' => $request->status->value,
+                'notes' => $request->notes,
+                'transaction_code' => $request->transaction_code,
+                'reviewer_notes' => $request->reviewer_notes,
+                'reviewed_by' => $request->reviewedBy?->name,
+                'created_at' => $request->created_at?->toIso8601String(),
+                'reviewed_at' => $request->reviewed_at?->toIso8601String(),
+            ])
+            ->all();
     }
 }

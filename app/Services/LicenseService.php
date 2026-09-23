@@ -13,6 +13,7 @@ use App\Support\Licensing\LicenseKeyCodec;
 use App\Support\Licensing\MachineId;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -31,6 +32,8 @@ class LicenseService
         protected AuditLogger $audit,
         protected MachineId $machineId,
         protected LicenseKeyCodec $keys,
+        protected PlanBranchCapService $branchCaps,
+        protected ReferralService $referrals,
     ) {}
 
     public function machineId(): string
@@ -44,7 +47,7 @@ class LicenseService
     public function startTrial(Business $business, ?User $actor = null, ?Plan $edition = null): Business
     {
         $edition ??= $this->defaultEdition();
-        $days = max(1, (int) config('deployment.license.trial_days', 30));
+        $days = max(1, (int) config('deployment.license.trial_days', 60));
         $endsAt = now()->addDays($days)->endOfDay();
 
         $business->forceFill([
@@ -77,7 +80,7 @@ class LicenseService
     /**
      * Activate with a purchased online license key (local verify or license server).
      *
-     * @param  array{license_key: string}  $data
+     * @param  array{license_key: string, keep_branch_ids?: list<int|string>}  $data
      */
     public function activateOnline(Business $business, User $actor, array $data): Business
     {
@@ -92,13 +95,14 @@ class LicenseService
             claims: $claims,
             mode: LicenseActivationMode::Online,
             rawKey: $rawKey,
+            keepBranchIds: $data['keep_branch_ids'] ?? [],
         );
     }
 
     /**
      * Activate with a machine-bound offline activation code.
      *
-     * @param  array{activation_code: string}  $data
+     * @param  array{activation_code: string, keep_branch_ids?: list<int|string>}  $data
      */
     public function activateOffline(Business $business, User $actor, array $data): Business
     {
@@ -132,6 +136,7 @@ class LicenseService
             claims: $claims,
             mode: LicenseActivationMode::Offline,
             rawKey: $rawCode,
+            keepBranchIds: $data['keep_branch_ids'] ?? [],
         );
     }
 
@@ -268,6 +273,7 @@ class LicenseService
      *     machine_id: string|null,
      *     issued_at: string|null,
      * }  $claims
+     * @param  list<int|string>  $keepBranchIds
      */
     protected function applyActivation(
         Business $business,
@@ -275,6 +281,7 @@ class LicenseService
         array $claims,
         LicenseActivationMode $mode,
         string $rawKey,
+        array $keepBranchIds = [],
     ): Business {
         if ($claims['expires_at'] !== null && $claims['expires_at']->isPast()) {
             throw ValidationException::withMessages([
@@ -290,33 +297,54 @@ class LicenseService
             'activation_mode' => $business->license_activation_mode?->value,
         ];
 
-        $business->forceFill([
-            'plan' => $claims['edition'],
-            'subscription_status' => SubscriptionStatus::Active,
-            'subscription_ends_at' => $claims['expires_at'],
-            'license_activation_mode' => $mode,
-            'license_key' => $rawKey,
-            'license_id' => $claims['license_id'],
-            'licensed_machine_id' => $machineId,
-            'licensed_at' => now(),
-        ])->save();
+        DB::transaction(function () use (
+            $business,
+            $actor,
+            $claims,
+            $keepBranchIds,
+            $mode,
+            $rawKey,
+            $machineId,
+            $previous,
+        ) {
+            $this->branchCaps->enforceOnPlanChange(
+                $business,
+                $claims['edition'],
+                $keepBranchIds,
+                $actor,
+            );
 
-        $this->audit->log(
-            action: 'license.activated',
-            auditable: $business,
-            metadata: [
-                'previous' => $previous,
-                'mode' => $mode->value,
-                'plan' => $claims['edition']->value,
+            $business->forceFill([
+                'plan' => $claims['edition'],
+                'subscription_status' => SubscriptionStatus::Active,
+                'subscription_ends_at' => $claims['expires_at'],
+                'license_activation_mode' => $mode,
+                'license_key' => $rawKey,
                 'license_id' => $claims['license_id'],
-                'expires_at' => $claims['expires_at']?->toDateString(),
-                'machine_id' => $machineId,
-            ],
-            actor: $actor,
-            businessId: $business->id,
-        );
+                'licensed_machine_id' => $machineId,
+                'licensed_at' => now(),
+            ])->save();
 
-        return $business->fresh();
+            $this->audit->log(
+                action: 'license.activated',
+                auditable: $business,
+                metadata: [
+                    'previous' => $previous,
+                    'mode' => $mode->value,
+                    'plan' => $claims['edition']->value,
+                    'license_id' => $claims['license_id'],
+                    'expires_at' => $claims['expires_at']?->toDateString(),
+                    'machine_id' => $machineId,
+                ],
+                actor: $actor,
+                businessId: $business->id,
+            );
+        });
+
+        $activated = $business->fresh();
+        $this->referrals->applyToPayment($activated);
+
+        return $activated;
     }
 
     /**
@@ -409,9 +437,9 @@ class LicenseService
 
     protected function defaultEdition(): Plan
     {
-        $edition = (string) config('deployment.license.default_edition', Plan::Enterprise->value);
+        $edition = (string) config('deployment.license.default_edition', Plan::Pro->value);
 
-        return Plan::tryFrom($edition) ?? Plan::Enterprise;
+        return Plan::tryFrom($edition) ?? Plan::Pro;
     }
 
     protected function assertDesktop(): void

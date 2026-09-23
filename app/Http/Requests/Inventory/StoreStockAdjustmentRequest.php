@@ -4,6 +4,7 @@ namespace App\Http\Requests\Inventory;
 
 use App\Enums\StockAdjustmentReason;
 use App\Models\InventoryBalance;
+use App\Models\ProductPack;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -43,10 +44,39 @@ class StoreStockAdjustmentRequest extends FormRequest
                 'integer',
                 Rule::exists('products', 'id')->where('business_id', $businessId),
             ],
+            'product_pack_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('product_packs', 'id')
+                    ->where('business_id', $businessId)
+                    ->where('is_active', true),
+            ],
             'quantity' => ['required', 'integer', 'min:1', 'max:1000000'],
             'direction' => ['required', 'string', Rule::in(['increase', 'decrease'])],
             'reason' => ['required', Rule::enum(StockAdjustmentReason::class)],
             'note' => ['required', 'string', 'min:3', 'max:1000'],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator): void {
+            $packId = $this->input('product_pack_id');
+            $productId = (int) $this->input('product_id');
+
+            if ($packId === null || $packId === '' || $productId < 1) {
+                return;
+            }
+
+            $exists = ProductPack::query()
+                ->whereKey((int) $packId)
+                ->where('product_id', $productId)
+                ->where('is_active', true)
+                ->exists();
+
+            if (! $exists) {
+                $validator->errors()->add('product_pack_id', 'Selected pack does not belong to this product.');
+            }
+        });
     }
 }

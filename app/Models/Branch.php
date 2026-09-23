@@ -26,6 +26,7 @@ class Branch extends Model
         'opens_at',
         'closes_at',
         'is_active',
+        'plan_paused_max_branches',
     ];
 
     protected function casts(): array
@@ -33,7 +34,13 @@ class Branch extends Model
         return [
             'operating_mode' => OperatingMode::class,
             'is_active' => 'boolean',
+            'plan_paused_max_branches' => 'integer',
         ];
+    }
+
+    public function isPlanPaused(): bool
+    {
+        return $this->plan_paused_max_branches !== null;
     }
 
     public function users(): BelongsToMany

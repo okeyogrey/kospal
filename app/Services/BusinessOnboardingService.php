@@ -19,6 +19,7 @@ class BusinessOnboardingService
     public function __construct(
         protected AuditLogger $audit,
         protected LicenseService $licenses,
+        protected ReferralService $referrals,
     ) {}
 
     /**
@@ -28,22 +29,28 @@ class BusinessOnboardingService
      *     currency: string,
      *     timezone?: string,
      *     default_locale?: string,
+     *     trial_edition?: string|null,
      *     branch_name: string,
      *     branch_city?: string|null,
      *     branch_address?: string|null,
      *     branch_phone?: string|null,
+     *     referral_code?: string|null,
      * }  $data
      * @return array{business: Business, branch: Branch, membership: BusinessMembership}
      */
     public function onboard(User $owner, array $data): array
     {
-        return DB::transaction(function () use ($owner, $data) {
+        $referralCode = $data['referral_code'] ?? $this->referrals->capturedCode();
+        $this->referrals->assertRedeemable(is_string($referralCode) ? $referralCode : null, $owner);
+
+        $result = DB::transaction(function () use ($owner, $data) {
             $timezone = BusinessClock::resolve(
                 $data['timezone'] ?? null,
                 $data['country'],
             );
             $defaultLocale = $data['default_locale']
                 ?? BusinessClock::localeForCountry($data['country']);
+            $plan = $this->initialPlan($data);
 
             $business = Business::query()->create([
                 'name' => $data['name'],
@@ -51,7 +58,7 @@ class BusinessOnboardingService
                 'currency' => $data['currency'],
                 'timezone' => $timezone,
                 'default_locale' => $defaultLocale,
-                'plan' => $this->initialPlan(),
+                'plan' => $plan,
                 'subscription_status' => Deployment::isDesktop()
                     ? SubscriptionStatus::Trial
                     : SubscriptionStatus::Pending,
@@ -61,7 +68,7 @@ class BusinessOnboardingService
             ]);
 
             if (Deployment::isDesktop()) {
-                $this->licenses->startTrial($business, $owner);
+                $this->licenses->startTrial($business, $owner, $plan);
                 $business->refresh();
             }
 
@@ -111,16 +118,37 @@ class BusinessOnboardingService
 
             return compact('business', 'branch', 'membership');
         });
+
+        $this->referrals->redeemForOnboarding(
+            $result['business'],
+            $owner,
+            is_string($referralCode) ? $referralCode : null,
+        );
+
+        return $result;
     }
 
-    protected function initialPlan(): Plan
+    /**
+     * @param  array{trial_edition?: string|null}  $data
+     */
+    protected function initialPlan(array $data): Plan
     {
-        if (Deployment::isDesktop()) {
-            $edition = (string) config('deployment.license.default_edition', Plan::Enterprise->value);
-
-            return Plan::tryFrom($edition) ?? Plan::Enterprise;
+        if (! Deployment::isDesktop()) {
+            return Plan::from(config('kospal.default_plan'));
         }
 
-        return Plan::from(config('kospal.default_plan'));
+        $chosen = $data['trial_edition'] ?? null;
+
+        if (is_string($chosen)) {
+            $edition = Plan::tryFrom($chosen);
+
+            if ($edition !== null) {
+                return $edition;
+            }
+        }
+
+        $fallback = (string) config('deployment.license.default_edition', Plan::Pro->value);
+
+        return Plan::tryFrom($fallback) ?? Plan::Pro;
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Products;
 
 use App\Http\Requests\Concerns\ConvertsMoneyFields;
 use App\Models\Product;
+use App\Support\Money\Money;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -19,6 +20,10 @@ class StoreProductRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        if ($this->input('sku') === '') {
+            $this->merge(['sku' => null]);
+        }
+
         if ($this->input('barcode') === '') {
             $this->merge(['barcode' => null]);
         }
@@ -38,7 +43,7 @@ class StoreProductRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:160'],
             'sku' => [
-                'required',
+                'nullable',
                 'string',
                 'max:80',
                 Rule::unique('products', 'sku')->where('business_id', $businessId),
@@ -55,6 +60,7 @@ class StoreProductRequest extends FormRequest
                 Rule::exists('categories', 'id')->where('business_id', $businessId),
             ],
             'description' => ['nullable', 'string', 'max:5000'],
+            'base_unit_name' => ['nullable', 'string', 'max:40'],
             'cost_price' => ['required', 'numeric', 'min:0'],
             'selling_price' => ['required', 'numeric', 'min:0'],
             'min_selling_price' => ['nullable', 'numeric', 'min:0'],
@@ -66,6 +72,13 @@ class StoreProductRequest extends FormRequest
                 'integer',
                 Rule::exists('suppliers', 'id')->where('business_id', $businessId),
             ],
+            'packs' => ['sometimes', 'array'],
+            'packs.*.id' => ['nullable', 'integer'],
+            'packs.*.name' => ['required_with:packs', 'string', 'max:80'],
+            'packs.*.units_per_pack' => ['required_with:packs', 'integer', 'min:2', 'max:1000000'],
+            'packs.*.barcode' => ['nullable', 'string', 'max:80'],
+            'packs.*.selling_price' => ['nullable', 'numeric', 'min:0'],
+            'packs.*.is_active' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -104,9 +117,37 @@ class StoreProductRequest extends FormRequest
         return [
             ...$data,
             ...$money,
+            'base_unit_name' => $data['base_unit_name'] ?? 'piece',
             'is_negotiable' => (bool) ($data['is_negotiable'] ?? true),
             'reorder_level' => (int) ($data['reorder_level'] ?? 0),
             'supplier_ids' => array_values(array_map('intval', $data['supplier_ids'] ?? [])),
+            'packs' => $this->packsToMinor($data['packs'] ?? []),
         ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $packs
+     * @return list<array<string, mixed>>
+     */
+    protected function packsToMinor(array $packs): array
+    {
+        $currency = app(TenantContext::class)->business()?->currency;
+        if ($currency === null || $packs === []) {
+            return $packs;
+        }
+
+        return array_map(function (array $pack) use ($currency): array {
+            if (array_key_exists('selling_price', $pack) && $pack['selling_price'] !== null && $pack['selling_price'] !== '') {
+                $pack['selling_price'] = Money::toMinor($pack['selling_price'], $currency);
+            } else {
+                $pack['selling_price'] = null;
+            }
+
+            if (($pack['barcode'] ?? '') === '') {
+                $pack['barcode'] = null;
+            }
+
+            return $pack;
+        }, $packs);
     }
 }

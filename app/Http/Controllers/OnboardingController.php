@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Onboarding\StoreBusinessOnboardingRequest;
 use App\Services\BusinessOnboardingService;
+use App\Services\ReferralService;
 use App\Support\Deployment;
+use App\Support\Plans\PlanCatalog;
 use App\Support\Tenancy\ResolvesTenant;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -27,6 +29,12 @@ class OnboardingController extends Controller
         return Inertia::render('onboarding/create', [
             'countries' => config('kospal.countries'),
             'currencies' => config('kospal.currencies'),
+            'plans' => PlanCatalog::cards(null, 'USD'),
+            'default_trial_edition' => (string) config('deployment.license.default_edition', 'pro'),
+            'trial_days' => (int) config('deployment.license.trial_days', 60),
+            'referral' => app(ReferralService::class)->previewOrNull(
+                app(ReferralService::class)->capturedCode(),
+            ),
         ]);
     }
 

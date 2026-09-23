@@ -7,6 +7,14 @@ return [
         'tagline' => 'Retail management for Kenya and Burundi',
     ],
 
+    'pwa' => [
+        'install_title' => 'Install KOSPAL',
+        'install_ios' => 'Tap Share, then Add to Home Screen. Open it from your home screen to use it like an app.',
+        'install_android' => 'In Chrome, tap ⋮ then Install app — not Add to Home screen. If you only see Add to Home screen, Chrome will keep showing the address bar.',
+        'install_button' => 'Install app',
+        'dismiss' => 'Not now',
+    ],
+
     'receipt' => [
         'title' => 'Receipt',
         'invoice' => 'Invoice / Receipt',
@@ -84,7 +92,8 @@ return [
         'stock_counts' => 'Stock counts',
         'inventory_timeline' => 'Inventory timeline',
         'inventory_valuation' => 'Stock valuation',
-        'sales' => 'Sales',
+        'pos' => 'POS',
+        'sales' => 'Sales history',
         'customers' => 'Customers',
         'expenses' => 'Expenses',
         'suppliers' => 'Suppliers',
@@ -95,8 +104,10 @@ return [
         'cash_sessions' => 'Cash management',
         'branches' => 'Branches',
         'subscription' => 'License',
+        'referrals' => 'Referrals',
         'platform_subscriptions' => 'Subscription review',
         'platform_payment_instructions' => 'Payment instructions',
+        'platform_referrals' => 'Referrals',
         'settings' => 'Settings',
     ],
 
@@ -108,9 +119,19 @@ return [
         'no_notifications' => 'No notifications yet',
         'profile' => 'Profile',
         'log_out' => 'Log out',
+        'open_pos' => 'Open POS',
     ],
 
     'pages' => [
+        'auth' => [
+            'login' => 'Log in',
+            'email' => 'Email address',
+            'password' => 'Password',
+            'forgot_password' => 'Forgot your password?',
+            'remember' => 'Remember me',
+            'no_account' => "Don't have an account?",
+            'sign_up' => 'Sign up',
+        ],
         'dashboard' => [
             'title' => 'Dashboard',
             'description' => 'Track sales, stock, and recent activity for your business.',
@@ -215,6 +236,9 @@ return [
             'empty_cart' => 'Scan a barcode or tap a product to start.',
             'resumed' => 'Resumed',
             'negotiate_price' => 'Edit line price',
+            'negotiable' => 'Negotiable',
+            'min_price' => 'Min',
+            'negotiated' => 'Negotiated',
             'list_price' => 'List',
             'customer' => 'Customer',
             'walk_in' => 'Walk-in',
@@ -240,6 +264,9 @@ return [
             'held_sales_hint' => 'Resume a parked cart for this branch.',
             'no_held' => 'No held sales for this branch.',
             'complete' => 'Complete sale',
+            'pay' => 'Pay',
+            'close_cart' => 'Close cart',
+            'history_short' => 'Sales',
             'processing' => 'Processing…',
             'confirm_title' => 'Confirm sale',
             'confirm_description' => 'This will deduct stock and record the payment.',
@@ -249,7 +276,8 @@ return [
             'saving' => 'Saving…',
             'confirm_charge' => 'Confirm & charge',
             'manager_approval' => 'Manager approval',
-            'manager_approval_hint' => 'Enter an owner or manager email/phone and password.',
+            'manager_approval_hint' => 'Ask a manager to enter their 6-digit PIN. Each manager has a unique PIN.',
+            'manager_pin' => 'Manager PIN',
             'manager_login' => 'Manager login',
             'manager_password' => 'Password',
             'approve_charge' => 'Approve & charge',
@@ -341,7 +369,7 @@ return [
             'no_results_title' => 'No results',
             'no_results_description' => 'Try a different date range or branch filter.',
             'upgrade_title' => 'Upgrade to unlock this report',
-            'upgrade_cta' => 'View subscription plans',
+            'upgrade_cta' => 'Compare editions',
             'upgrade_teaser_title' => 'Need deeper insights?',
             'upgrade_teaser_description' => 'Pro unlocks sales trends, product performance, gross profit estimates, and CSV export.',
             'current_plan' => 'Current plan',
@@ -395,7 +423,7 @@ return [
 
     'welcome' => [
         'title' => 'Retail clarity for every counter',
-        'subtitle' => 'KOSPAL helps small physical retailers in Kenya and Burundi manage products, stock, sales, and staff — in English, French, or Kirundi.',
+        'subtitle' => 'KOSPAL helps small physical retailers in Kenya and Burundi manage products, stock, sales, and staff — in English, French, Kirundi, or Kinyarwanda.',
         'cta_primary' => 'Open dashboard',
         'cta_login' => 'Log in',
         'cta_register' => 'Create account',

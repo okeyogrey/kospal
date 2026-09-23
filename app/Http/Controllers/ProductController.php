@@ -83,6 +83,7 @@ class ProductController extends Controller
 
         $product->load([
             'category:id,name',
+            'packs',
             'suppliers:id,name,phone',
             'inventoryBalances' => fn ($q) => $q
                 ->whereIn('branch_id', $allowedBranchIds)
@@ -104,6 +105,20 @@ class ProductController extends Controller
                     'name' => $s->name,
                     'phone' => $s->phone,
                 ])->values(),
+                'packs' => $product->packs
+                    ->sortBy('units_per_pack')
+                    ->values()
+                    ->map(fn ($pack) => [
+                        'id' => $pack->id,
+                        'name' => $pack->name,
+                        'units_per_pack' => $pack->units_per_pack,
+                        'barcode' => $pack->barcode,
+                        'selling_price' => $pack->selling_price !== null
+                            ? Money::fromMinor($pack->selling_price, $business->currency)
+                            : '',
+                        'selling_price_minor' => $pack->selling_price,
+                        'is_active' => $pack->is_active,
+                    ]),
                 'stock_by_branch' => $product->inventoryBalances->map(fn ($balance) => [
                     'id' => $balance->id,
                     'branch_id' => $balance->branch_id,
@@ -186,6 +201,7 @@ class ProductController extends Controller
             'name' => $product->name,
             'sku' => $product->sku,
             'barcode' => $product->barcode,
+            'base_unit_name' => $product->base_unit_name ?: 'piece',
             'category_id' => $product->category_id,
             'category_name' => $product->category?->name,
             'cost_price' => Money::fromMinor($product->cost_price, $currency),

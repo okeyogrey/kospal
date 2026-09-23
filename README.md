@@ -2,7 +2,7 @@
 
 KOSPAL is a **desktop-first** retail management application for small physical retailers in Kenya and Burundi. It runs locally with Laravel, React/Inertia, SQLite, and an optional Tauri Windows shell. Businesses own their data on the machine; local licenses replace cloud subscriptions.
 
-Supported languages: English, French, Kirundi  
+Supported languages: English, French, Kirundi, Kinyarwanda  
 Supported currencies: KES, BIF, USD  
 Business timezones: `Africa/Nairobi` (Kenya), `Africa/Bujumbura` (Burundi)
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Onboarding;
 
+use App\Enums\Plan;
 use App\Support\Deployment;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -38,6 +39,12 @@ class StoreBusinessOnboardingRequest extends FormRequest
             'branch_city' => ['nullable', 'string', 'max:120'],
             'branch_address' => ['nullable', 'string', 'max:255'],
             'branch_phone' => ['nullable', 'string', 'max:40'],
+            'trial_edition' => [
+                Deployment::isDesktop() ? 'required' : 'nullable',
+                'string',
+                Rule::in(Plan::values()),
+            ],
+            'referral_code' => ['nullable', 'string', 'max:32'],
         ];
     }
 }

@@ -65,7 +65,7 @@ class HoldSaleRequest extends FormRequest
                 Rule::exists('sales', 'id')->where('business_id', $businessId)->where('status', 'held'),
             ],
             'manager_approval' => ['nullable', 'array'],
-            'manager_approval.pin' => ['nullable', 'string', 'max:8'],
+            'manager_approval.pin' => ['nullable', 'string', 'regex:/^\d{6}$/'],
             'manager_approval.login' => ['nullable', 'string', 'max:255'],
             'manager_approval.password' => ['nullable', 'string', 'max:255'],
             'items' => ['required', 'array', 'min:1'],
@@ -73,6 +73,11 @@ class HoldSaleRequest extends FormRequest
                 'required',
                 'integer',
                 Rule::exists('products', 'id')->where('business_id', $businessId)->where('is_active', true),
+            ],
+            'items.*.product_pack_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('product_packs', 'id')->where('business_id', $businessId)->where('is_active', true),
             ],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
@@ -105,6 +110,9 @@ class HoldSaleRequest extends FormRequest
             'items' => collect($data['items'] ?? [])->map(function (array $item) use ($currency): array {
                 return [
                     'product_id' => (int) $item['product_id'],
+                    'product_pack_id' => isset($item['product_pack_id']) && $item['product_pack_id'] !== null && $item['product_pack_id'] !== ''
+                        ? (int) $item['product_pack_id']
+                        : null,
                     'quantity' => (int) $item['quantity'],
                     'unit_price' => array_key_exists('unit_price', $item) && $item['unit_price'] !== null && $item['unit_price'] !== ''
                         ? Money::toMinor($item['unit_price'], $currency)

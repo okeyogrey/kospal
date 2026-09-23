@@ -5,37 +5,42 @@ import { initializeTheme } from '@/hooks/use-appearance';
 import AppLayout from '@/layouts/app-layout';
 import AuthLayout from '@/layouts/auth-layout';
 import SettingsLayout from '@/layouts/settings/layout';
+import { markAppReady } from '@/pwa';
 
 const appName = import.meta.env.VITE_APP_NAME || 'KOSPAL';
 
-createInertiaApp({
-    title: (title) => (title ? `${title} - ${appName}` : appName),
-    layout: (name) => {
-        switch (true) {
-            case name === 'welcome':
-            case name.startsWith('onboarding/'):
-            case name.startsWith('invitations/'):
-                return null;
-            case name.startsWith('auth/'):
-                return AuthLayout;
-            case name.startsWith('settings/'):
-                return [AppLayout, SettingsLayout];
-            default:
-                return AppLayout;
-        }
-    },
-    strictMode: true,
-    withApp(app) {
-        return (
-            <TooltipProvider delayDuration={0}>
-                {app}
-                <Toaster />
-            </TooltipProvider>
-        );
-    },
-    progress: {
-        color: '#1F5C4A',
-    },
+void Promise.resolve(
+    createInertiaApp({
+        title: (title) => (title ? `${title} - ${appName}` : appName),
+        layout: (name) => {
+            switch (true) {
+                case name === 'welcome':
+                case name.startsWith('onboarding/'):
+                case name.startsWith('invitations/'):
+                    return null;
+                case name.startsWith('auth/'):
+                    return AuthLayout;
+                case name.startsWith('settings/'):
+                    return [AppLayout, SettingsLayout];
+                default:
+                    return AppLayout;
+            }
+        },
+        strictMode: true,
+        withApp(app) {
+            return (
+                <TooltipProvider delayDuration={0}>
+                    {app}
+                    <Toaster />
+                </TooltipProvider>
+            );
+        },
+        progress: {
+            color: '#1F5C4A',
+        },
+    }),
+).then(() => {
+    markAppReady();
 });
 
 // This will set light / dark mode on load...

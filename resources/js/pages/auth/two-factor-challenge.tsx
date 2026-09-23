@@ -70,6 +70,8 @@ export default function TwoFactorChallenge() {
                                         placeholder="Enter recovery code"
                                         autoFocus={showRecoveryInput}
                                         required
+                                        className="h-12 min-h-12 scroll-mb-28 text-base"
+                                        autoComplete="one-time-code"
                                     />
                                     <InputError
                                         message={errors.recovery_code}
@@ -94,6 +96,7 @@ export default function TwoFactorChallenge() {
                                                         <InputOTPSlot
                                                             key={index}
                                                             index={index}
+                                                            className="h-12 w-11 text-base"
                                                         />
                                                     ),
                                                 )}
@@ -106,7 +109,7 @@ export default function TwoFactorChallenge() {
 
                             <Button
                                 type="submit"
-                                className="w-full"
+                                className="h-12 min-h-12 w-full scroll-mb-6 text-base"
                                 disabled={processing}
                             >
                                 Continue
@@ -116,7 +119,7 @@ export default function TwoFactorChallenge() {
                                 <span>or you can </span>
                                 <button
                                     type="button"
-                                    className="cursor-pointer text-foreground underline decoration-neutral-300 underline-offset-4 transition-colors duration-300 ease-out hover:decoration-current! dark:decoration-neutral-500"
+                                    className="min-h-11 cursor-pointer py-2 text-foreground underline decoration-neutral-300 underline-offset-4 transition-colors duration-300 ease-out hover:decoration-current! dark:decoration-neutral-500"
                                     onClick={() =>
                                         toggleRecoveryMode(clearErrors)
                                     }

@@ -7,7 +7,7 @@ KOSPAL is a desktop-first retail management application for small physical retai
 - Local-first Laravel + Inertia + React stack
 - Strong tenant data isolation
 - Role-based access for store teams
-- Localization for English, French, and Kirundi
+- Localization for English, French, Kirundi, and Kinyarwanda
 - Currency support for KES, BIF, and USD
 - Plan limits enforced per organization
 - Deployment concerns isolated behind contracts (`App\Contracts\*`) so web/SaaS and desktop adapters can swap without rewriting retail services
@@ -24,11 +24,13 @@ Domain code depends on contracts, not packaging details. Bindings live in `Deplo
 | `DatabaseRuntime` | `LaravelDatabaseRuntime` | same |
 | `DatabaseToolkit` | `LaravelDatabaseToolkit` (SQLite prepare/diagnose/repair/export) | same (MySQL/pgsql-safe subset) |
 | `BackupService` | `SqliteFileBackupService` | `UnsupportedBackupService` |
-| `SynchronizationService` | `NoOpSynchronizationService` | same |
+| `SynchronizationService` | `CloudSynchronizationService` (outbox push/pull; stock conflicts rejected) | same hub API |
 | `DesktopSettings` | `FileDesktopSettings` (JSON under `storage/app/desktop-settings.json`) | same |
 | `UpdateService` | `LocalUpdateService` | `UnsupportedUpdateService` |
 
 Default `KOSPAL_DEPLOYMENT_MODE=desktop`. Onboarding starts a **30-day trial** (`KOSPAL_LICENSE_TRIAL_DAYS`, edition from `KOSPAL_LICENSE_EDITION`). Owners activate licenses under **Settings → License** via online key or offline machine-bound code. Machine ID is stored per installation. After expiry the app stays readable but writes are blocked. Feature entitlements still come from the licensed plan via `FeatureFlagService`. Platform admin subscription approval remains for web mode only.
+
+Linked shops exchange changes through `KOSPAL_SYNC_SERVER_URL` (Settings → Shops). Each computer keeps its own database and sells while offline. A background sync pushes an outbox and pulls other computers' changes. Shared stock is checked on the server: if two tills sell the last unit, the later sale is kept but flagged so it can be voided and refunded. Staff password hashes and approval PINs travel with the link so the same login works on each computer. Licenses stay on the machine that activated them. Backups stay local files.
 
 Desktop owners also manage installation ops under Settings (gated by `deployment.is_desktop`):
 
@@ -113,7 +115,7 @@ Rules:
 
 ## Localization and currency
 
-- Locales: `en`, `fr`, `rn` (copy in `lang/{locale}/kospal.php`, shared to Inertia as `translations`)
+- Locales: `en`, `fr`, `rn`, `rw` (copy in `lang/{locale}/kospal.php`, shared to Inertia as `translations`)
 - Locale resolution order: session → `users.preferred_locale` → `businesses.default_locale` → `app.locale`
 - Changing language via `locale.update` updates the session and authenticated user's preferred locale; owners may also persist business default with `persist_business`
 - Laravel `fallback_locale` is `en` (Kirundi may intentionally retain English for a few secondary strings)

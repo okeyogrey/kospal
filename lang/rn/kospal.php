@@ -13,6 +13,14 @@ return [
         'tagline' => 'Ubuyobozi bw’ubudandaji mu Kenya n’Uburundi',
     ],
 
+    'pwa' => [
+        'install_title' => 'Shiraho KOSPAL',
+        'install_ios' => 'Kanda Share, hanyuma Add to Home Screen. Ufungure kuva ku rushe rw’ibanze nk’indi porogaramu.',
+        'install_android' => 'Muri Chrome, kanda ⋮ hanyuma Install app — ntiwukande Add to Home screen. Niba ubona Add to Home screen gusa, Chrome izoguma yerekana adresse.',
+        'install_button' => 'Shiraho porogaramu',
+        'dismiss' => 'Sihari ubu',
+    ],
+
     'receipt' => [
         'title' => 'Receipt',
         'invoice' => 'Invoice / Receipt',
@@ -78,7 +86,7 @@ return [
         'organization' => 'Umuryango',
         'dashboard' => 'Ikibaho',
         'products' => 'Ibicuruzwa',
-        'categories' => 'Ibyiciro',
+        'categories' => 'Imigwi',
         'brands' => 'Ibirango',
         'inventory' => 'Ibikoresho',
         'transfers' => 'Kohereza',
@@ -90,7 +98,8 @@ return [
         'stock_counts' => 'Kubara ibikoresho',
         'inventory_timeline' => 'Amateka y’ibikoresho',
         'inventory_valuation' => 'Agaciro k’ibikoresho',
-        'sales' => 'Uguro',
+        'pos' => 'POS',
+        'sales' => 'Amateka y’uguro',
         'customers' => 'Abakiriya',
         'expenses' => 'Amafaranga asohoka',
         'suppliers' => 'Abatanga ibicuruzwa',
@@ -101,8 +110,10 @@ return [
         'cash_sessions' => 'Gucunga amafaranga',
         'branches' => 'Amashami',
         'subscription' => 'Ukwiyandikisha',
+        'referrals' => 'Gutumira',
         'platform_subscriptions' => 'Gusuzuma kwiyandikisha',
         'platform_payment_instructions' => 'Amabwiriza y’ubwishyu',
+        'platform_referrals' => 'Gutumira',
         'settings' => 'Amagenamiterere',
     ],
 
@@ -114,9 +125,19 @@ return [
         'no_notifications' => 'Nta butumwa',
         'profile' => 'Umwirondoro',
         'log_out' => 'Sohoka',
+        'open_pos' => 'Fungura POS',
     ],
 
     'pages' => [
+        'auth' => [
+            'login' => 'Injira',
+            'email' => 'Imeri',
+            'password' => 'Ijambo ry’ibanga',
+            'forgot_password' => 'Wibagiwe ijambo ry’ibanga?',
+            'remember' => 'Nzibuke',
+            'no_account' => 'Nta konti ufite?',
+            'sign_up' => 'Fungura konti',
+        ],
         'dashboard' => [
             'title' => 'Ikibaho',
             'description' => 'Kurikirana uguro, ibikoresho n’ibikorwa biheruka.',
@@ -221,6 +242,9 @@ return [
             'empty_cart' => 'Sikana barcode cyangwa kanda igicuruzwa.',
             'resumed' => 'Byakomejwe',
             'negotiate_price' => 'Hindura igiciro',
+            'negotiable' => 'Kirahinduka',
+            'min_price' => 'Ntoya',
+            'negotiated' => 'Cyahinduwe',
             'list_price' => 'Igiciro cyanditse',
             'customer' => 'Umukiriya',
             'walk_in' => 'Utari yanditswe',
@@ -246,6 +270,9 @@ return [
             'held_sales_hint' => 'Komeza igareti yahagaritswe kuri iri shami.',
             'no_held' => 'Nta guro ruhagaritswe kuri iri shami.',
             'complete' => 'Soza uguro',
+            'pay' => 'Ishyura',
+            'close_cart' => 'Funga igareti',
+            'history_short' => 'Uguro',
             'processing' => 'Birakorwa…',
             'confirm_title' => 'Emeza uguro',
             'confirm_description' => 'Ibicuruzwa bizagabanuka kandi kwishyura byandikwa.',
@@ -255,7 +282,8 @@ return [
             'saving' => 'Birabikwa…',
             'confirm_charge' => 'Emeza wishyure',
             'manager_approval' => 'Kwemera kwa manager',
-            'manager_approval_hint' => 'Andika email/telefone n’ijambo ry’ibanga ry’umuyobozi.',
+            'manager_approval_hint' => 'Saba umuyobozi yandike kode ye ya PIN y’imibare 6. Buri muyobozi afite PIN yihariye.',
+            'manager_pin' => 'PIN ya manager',
             'manager_login' => 'Kwinjira kwa manager',
             'manager_password' => 'Ijambo ry’ibanga',
             'approve_charge' => 'Emera wishyure',
@@ -401,7 +429,7 @@ return [
 
     'welcome' => [
         'title' => 'Ubunyangamugayo bw’ubucuruzi kuri konta yose',
-        'subtitle' => 'KOSPAL ifasha abadandaji bato mu Kenya n’Uburundi gucunga ibicuruzwa, ibikoresho, uguro n’abakozi — mu Cyongereza, Igifaransa canke Ikirundi.',
+        'subtitle' => 'KOSPAL ifasha abadandaji bato mu Kenya n’Uburundi gucunga ibicuruzwa, ibikoresho, uguro n’abakozi — mu Cyongereza, Igifaransa, Ikirundi canke Ikinyarwanda.',
         'cta_primary' => 'Fungura ikibaho',
         'cta_login' => 'Injira',
         'cta_register' => 'Kora konti',

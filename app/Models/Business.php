@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class Business extends Model
@@ -21,6 +22,7 @@ class Business extends Model
     protected $fillable = [
         'name',
         'slug',
+        'public_uuid',
         'country',
         'currency',
         'timezone',
@@ -36,10 +38,12 @@ class Business extends Model
         'license_id',
         'licensed_machine_id',
         'licensed_at',
+        'first_paid_period_at',
         'max_staff_override',
         'owner_user_id',
         'is_active',
         'cashiers_can_log_expenses',
+        'cashiers_can_approve_price_overrides',
     ];
 
     protected function casts(): array
@@ -52,8 +56,10 @@ class Business extends Model
             'license_activation_mode' => LicenseActivationMode::class,
             'license_key' => 'encrypted',
             'licensed_at' => 'datetime',
+            'first_paid_period_at' => 'datetime',
             'is_active' => 'boolean',
             'cashiers_can_log_expenses' => 'boolean',
+            'cashiers_can_approve_price_overrides' => 'boolean',
             'max_staff_override' => 'integer',
         ];
     }
@@ -63,6 +69,10 @@ class Business extends Model
         static::creating(function (Business $business): void {
             if (blank($business->slug)) {
                 $business->slug = static::uniqueSlugFor($business->name);
+            }
+
+            if (blank($business->public_uuid)) {
+                $business->public_uuid = (string) Str::uuid();
             }
         });
     }
@@ -104,6 +114,11 @@ class Business extends Model
     public function subscriptionRequests(): HasMany
     {
         return $this->hasMany(SubscriptionRequest::class);
+    }
+
+    public function referralAccount(): HasOne
+    {
+        return $this->hasOne(ReferralAccount::class);
     }
 
     public function auditLogs(): HasMany

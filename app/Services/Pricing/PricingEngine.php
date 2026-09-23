@@ -2,6 +2,7 @@
 
 namespace App\Services\Pricing;
 
+use App\Enums\BusinessRole;
 use App\Models\BusinessMembership;
 use App\Models\Product;
 use Illuminate\Validation\ValidationException;
@@ -12,10 +13,14 @@ class PricingEngine
      * Lowest unit price a cashier may use without manager approval.
      * Absolute floor is always the product minimum selling price.
      */
-    public function cashierPermissionFloor(Product $product, ?BusinessMembership $membership): int
-    {
-        $minSelling = max(0, (int) $product->min_selling_price);
-        $suggested = max(0, (int) $product->selling_price);
+    public function cashierPermissionFloor(
+        Product $product,
+        ?BusinessMembership $membership,
+        int $unitsPerPack = 1,
+    ): int {
+        $units = max(1, $unitsPerPack);
+        $minSelling = max(0, (int) $product->min_selling_price) * $units;
+        $suggested = max(0, (int) $product->selling_price) * $units;
 
         if ($membership === null || $membership->role->canApplySaleDiscount()) {
             return $minSelling;
@@ -36,8 +41,10 @@ class PricingEngine
         int $listUnitPrice,
         ?BusinessMembership $membership,
         int $itemIndex,
+        int $unitsPerPack = 1,
     ): void {
-        $minSelling = max(0, (int) $product->min_selling_price);
+        $units = max(1, $unitsPerPack);
+        $minSelling = max(0, (int) $product->min_selling_price) * $units;
 
         if ($unitPrice < $minSelling) {
             throw ValidationException::withMessages([
@@ -64,7 +71,7 @@ class PricingEngine
     /**
      * Whether a line (or sale discount) requires manager PIN/credentials.
      *
-     * @param  list<array{product: Product, unit_price: int, list_unit_price: int}>  $items
+     * @param  list<array{product: Product, unit_price: int, list_unit_price: int, pack?: mixed}>  $items
      */
     public function requiresManagerApproval(
         array $items,
@@ -79,10 +86,19 @@ class PricingEngine
             return false;
         }
 
+        if (
+            $membership !== null
+            && $membership->role === BusinessRole::Cashier
+            && $this->cashiersCanSelfApproveOverrides($membership)
+        ) {
+            return false;
+        }
+
         foreach ($items as $item) {
             /** @var Product $product */
             $product = $item['product'];
-            $floor = $this->cashierPermissionFloor($product, $membership);
+            $units = max(1, (int) (data_get($item, 'pack.units_per_pack') ?? 1));
+            $floor = $this->cashierPermissionFloor($product, $membership, $units);
 
             if ($item['unit_price'] < $floor) {
                 return true;
@@ -90,6 +106,15 @@ class PricingEngine
         }
 
         return false;
+    }
+
+    protected function cashiersCanSelfApproveOverrides(BusinessMembership $membership): bool
+    {
+        $business = $membership->relationLoaded('business')
+            ? $membership->business
+            : $membership->business()->first();
+
+        return (bool) ($business?->cashiers_can_approve_price_overrides ?? false);
     }
 
     /**

@@ -205,6 +205,12 @@ it('requires manager approval for negotiated prices by cashiers', function () {
     ['owner' => $owner, 'business' => $business, 'branch' => $branch, 'product' => $product] = retailSaleContext();
     $cashier = $this->addMember($business, BusinessRole::Cashier, branchIds: [$branch->id]);
 
+    $owner->memberships()
+        ->where('business_id', $business->id)
+        ->firstOrFail()
+        ->forceFill(['approval_pin' => '654321'])
+        ->save();
+
     $this->clockInAndOpenDrawer($cashier);
 
     $this->actingAs($cashier)
@@ -218,13 +224,12 @@ it('requires manager approval for negotiated prices by cashiers', function () {
                 ],
             ],
         ]))
-        ->assertSessionHasErrors('manager_approval');
+        ->assertSessionHasErrors('manager_approval.pin');
 
     $this->actingAs($cashier)
         ->post(route('sales.store'), retailSalePayload($branch, $product, [
             'manager_approval' => [
-                'login' => $owner->email,
-                'password' => 'password',
+                'pin' => '654321',
             ],
             'items' => [
                 [

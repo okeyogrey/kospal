@@ -4,6 +4,7 @@ use App\Enums\Plan;
 use App\Enums\SubscriptionRequestStatus;
 use App\Enums\SubscriptionStatus;
 use App\Models\AuditLog;
+use App\Models\Branch;
 use App\Models\PlatformSetting;
 use App\Models\SubscriptionRequest;
 use App\Models\User;
@@ -135,4 +136,38 @@ it('forbids regular users from editing payment instructions', function () {
             'body' => 'Nope',
         ])
         ->assertForbidden();
+});
+
+it('pauses extra branches when a platform admin downgrades to starter', function () {
+    ['business' => $business, 'branch' => $kept] = $this->createBusinessWithOwner([
+        'plan' => Plan::Enterprise,
+        'subscription_status' => SubscriptionStatus::Active,
+    ]);
+
+    $extra = Branch::factory()->create([
+        'business_id' => $business->id,
+        'name' => 'Overflow Shop',
+    ]);
+
+    $admin = User::factory()->platformSuperAdmin()->create();
+
+    $this->actingAs($admin)
+        ->patch(route('platform.businesses.subscription.update', $business), [
+            'plan' => 'starter',
+            'subscription_status' => 'active',
+        ])
+        ->assertSessionHasErrors('keep_branch_ids');
+
+    $this->actingAs($admin)
+        ->patch(route('platform.businesses.subscription.update', $business), [
+            'plan' => 'starter',
+            'subscription_status' => 'active',
+            'keep_branch_ids' => [$kept->id],
+        ])
+        ->assertRedirect();
+
+    expect($business->fresh()->plan)->toBe(Plan::Starter)
+        ->and($kept->fresh()->is_active)->toBeTrue()
+        ->and($extra->fresh()->is_active)->toBeFalse()
+        ->and($extra->fresh()->plan_paused_max_branches)->toBe(1);
 });

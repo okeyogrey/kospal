@@ -32,7 +32,7 @@ Demo password for all seeded users: `password`
 ## Owner (`owner@kospal.test`)
 
 - [ ] Login lands on dashboard with today’s/week/month metrics for the business timezone
-- [ ] Switch language to French and Kirundi; labels update; preference survives logout/login
+- [ ] Switch language to French, Kirundi, and Kinyarwanda; labels update; preference survives logout/login
 - [ ] Create product, category, supplier; set opening stock; adjust stock
 - [ ] Complete a POS sale (cash/mobile), view receipt/PDF invoice, void a sale with reason
 - [ ] Add customer from POS and reuse on next sale
@@ -102,6 +102,18 @@ Demo password for all seeded users: `password`
 - [ ] Oversized or `.txt` receipt uploads are rejected
 - [ ] Required POS/expense fields fail closed with readable validation errors
 - [ ] Bursting sensitive POS or invitation posts eventually returns HTTP 429
+
+---
+
+## Phone / tablet on the same Wi-Fi (dev only)
+
+From this PC:
+
+```bash
+npm run dev:lan
+```
+
+Open the URL printed in the terminal (`http://<PC-LAN-IP>:8000`) on the phone. Find the PC IPv4 with `ipconfig` (Wireless LAN adapter Wi-Fi → IPv4 Address). Windows Firewall may block inbound PHP/Node; allow TCP 8000 and 5173 on a Private network if the phone cannot connect. Tauri / `desktop:serve` stay on localhost.
 
 ---
 

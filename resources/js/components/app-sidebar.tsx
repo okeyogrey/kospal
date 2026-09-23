@@ -11,9 +11,11 @@ import {
     CreditCard,
     FileSpreadsheet,
     FileText,
+    Gift,
     History,
     Landmark,
     LayoutGrid,
+    MonitorSmartphone,
     Package,
     PackageCheck,
     Receipt,
@@ -49,7 +51,7 @@ import { index as productivity } from '@/routes/productivity';
 import { index as products } from '@/routes/products';
 import { index as reports } from '@/routes/reports';
 import { index as customers } from '@/routes/customers';
-import { index as sales } from '@/routes/sales';
+import { index as sales, pos as salesPos } from '@/routes/sales';
 import { index as staff } from '@/routes/staff';
 import { index as shifts } from '@/routes/shifts';
 import { index as stockTransfers } from '@/routes/stock-transfers';
@@ -81,6 +83,12 @@ export function AppSidebar() {
             href: '/platform/payment-instructions',
             icon: Landmark,
         },
+        {
+            key: 'platform_referrals',
+            title: t('nav.platform_referrals', 'Referrals'),
+            href: '/platform/referrals',
+            icon: Gift,
+        },
     ];
 
     const operationsItems: NavItem[] = [
@@ -89,6 +97,12 @@ export function AppSidebar() {
             title: t('nav.dashboard'),
             href: dashboard(),
             icon: LayoutGrid,
+        },
+        {
+            key: 'pos',
+            title: t('nav.pos', 'POS'),
+            href: salesPos(),
+            icon: MonitorSmartphone,
         },
         {
             key: 'products',
@@ -246,6 +260,12 @@ export function AppSidebar() {
             title: t('nav.subscription'),
             href: subscription(),
             icon: CreditCard,
+        },
+        {
+            key: 'referrals',
+            title: t('nav.referrals', 'Referrals'),
+            href: '/referrals',
+            icon: Gift,
         },
         {
             key: 'settings',

@@ -26,7 +26,7 @@ uses(RefreshDatabase::class, CreatesBusinesses::class);
 
 function proBusiness(): array
 {
-    return test()->createBusinessWithOwner(['plan' => Plan::Pro]);
+    return test()->createBusinessWithOwner(['plan' => Plan::Pro, 'currency' => 'KES']);
 }
 
 it('runs purchase order to grn to invoice to payment with weighted average cost', function () {
@@ -74,7 +74,7 @@ it('runs purchase order to grn to invoice to payment with weighted average cost'
                 [
                     'product_id' => $product->id,
                     'quantity' => 5,
-                    'unit_cost' => 2000,
+                    'unit_cost' => '20.00',
                     'purchase_order_item_id' => $order->items()->first()->id,
                 ],
             ],
@@ -141,6 +141,31 @@ it('runs purchase order to grn to invoice to payment with weighted average cost'
     expect($invoice->fresh()->status)->toBe(SupplierInvoiceStatus::Paid);
 });
 
+it('converts goods received unit costs from major currency units', function () {
+    ['owner' => $owner, 'business' => $business, 'branch' => $branch] = proBusiness();
+    $supplier = Supplier::factory()->create(['business_id' => $business->id]);
+    $product = Product::factory()->create([
+        'business_id' => $business->id,
+        'cost_price' => 120000,
+    ]);
+
+    $this->actingAs($owner)
+        ->post(route('goods-received.store'), [
+            'supplier_id' => $supplier->id,
+            'branch_id' => $branch->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 1,
+                    'unit_cost' => '1200.00',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    expect(GoodsReceivedNote::query()->first()?->items()->value('unit_cost'))->toBe(120000);
+});
+
 it('completes a stock count and posts variance movements', function () {
     ['owner' => $owner, 'business' => $business, 'branch' => $branch] = proBusiness();
     $product = Product::factory()->create(['business_id' => $business->id]);
@@ -163,6 +188,10 @@ it('completes a stock count and posts variance movements', function () {
         ->and($count->items()->count())->toBe(1);
 
     $this->actingAs($owner)
+        ->get(route('stock-counts.show', $count))
+        ->assertOk();
+
+    $this->actingAs($owner)
         ->post(route('stock-counts.start', $count))
         ->assertRedirect();
 
@@ -182,6 +211,45 @@ it('completes a stock count and posts variance movements', function () {
         ->and(InventoryBalance::query()->where('product_id', $product->id)->value('quantity'))->toBe(7)
         ->and(StockMovement::query()->where('type', StockMovementType::StockCountVariance)->value('quantity_delta'))->toBe(-3)
         ->and(AuditLog::query()->where('action', 'stock_count.completed')->exists())->toBeTrue();
+});
+
+it('includes catalog products with zero system qty for opening stock', function () {
+    ['owner' => $owner, 'business' => $business, 'branch' => $branch] = proBusiness();
+    $product = Product::factory()->create([
+        'business_id' => $business->id,
+        'is_active' => true,
+    ]);
+
+    $this->actingAs($owner)
+        ->post(route('stock-counts.store'), [
+            'branch_id' => $branch->id,
+            'notes' => 'opening stock',
+        ])
+        ->assertRedirect();
+
+    $count = StockCount::query()->firstOrFail();
+
+    expect($count->items()->count())->toBe(1)
+        ->and($count->items()->first()?->product_id)->toBe($product->id)
+        ->and($count->items()->first()?->system_quantity)->toBe(0);
+
+    $this->actingAs($owner)
+        ->post(route('stock-counts.start', $count))
+        ->assertRedirect();
+
+    $this->actingAs($owner)
+        ->post(route('stock-counts.record', $count), [
+            'counts' => [
+                ['product_id' => $product->id, 'counted_quantity' => 25],
+            ],
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($owner)
+        ->post(route('stock-counts.complete', $count))
+        ->assertRedirect();
+
+    expect(InventoryBalance::query()->where('product_id', $product->id)->value('quantity'))->toBe(25);
 });
 
 it('allows bidirectional stock adjustments with found reason', function () {
@@ -276,7 +344,7 @@ it('gates purchase orders behind the pro plan feature', function () {
             [
                 'product_id' => $product->id,
                 'quantity' => 4,
-                'unit_cost' => 250,
+                'unit_cost' => '2.50',
                 'purchase_order_item_id' => $order->items()->first()->id,
             ],
         ],

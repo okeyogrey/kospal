@@ -45,6 +45,7 @@ type Limits = {
 
 type StaffSettings = {
     cashiers_can_log_expenses: boolean;
+    cashiers_can_approve_price_overrides: boolean;
     can_edit: boolean;
 };
 
@@ -163,6 +164,8 @@ function MembershipEditor({
 function StaffSettingsCard({ settings }: { settings: StaffSettings }) {
     const form = useForm({
         cashiers_can_log_expenses: settings.cashiers_can_log_expenses,
+        cashiers_can_approve_price_overrides:
+            settings.cashiers_can_approve_price_overrides,
     });
 
     return (
@@ -177,9 +180,10 @@ function StaffSettingsCard({ settings }: { settings: StaffSettings }) {
                     });
                 }}
             >
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-start gap-2 text-sm">
                     <input
                         type="checkbox"
+                        className="mt-0.5"
                         checked={form.data.cashiers_can_log_expenses}
                         onChange={(event) =>
                             form.setData(
@@ -188,10 +192,34 @@ function StaffSettingsCard({ settings }: { settings: StaffSettings }) {
                             )
                         }
                     />
-                    Allow cashiers to log expenses
+                    <span>Allow cashiers to log expenses</span>
                 </label>
                 <InputError
                     message={form.errors.cashiers_can_log_expenses}
+                />
+                <label className="flex items-start gap-2 text-sm">
+                    <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={
+                            form.data.cashiers_can_approve_price_overrides
+                        }
+                        onChange={(event) =>
+                            form.setData(
+                                'cashiers_can_approve_price_overrides',
+                                event.target.checked,
+                            )
+                        }
+                    />
+                    <span>
+                        Allow cashiers to approve their own price edits (no
+                        manager PIN). Use when no manager is on shift.
+                    </span>
+                </label>
+                <InputError
+                    message={
+                        form.errors.cashiers_can_approve_price_overrides
+                    }
                 />
                 <Button
                     type="submit"

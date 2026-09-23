@@ -23,6 +23,7 @@ class Product extends Model
         'sku',
         'barcode',
         'description',
+        'base_unit_name',
         'cost_price',
         'selling_price',
         'min_selling_price',
@@ -46,6 +47,16 @@ class Product extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function packs(): HasMany
+    {
+        return $this->hasMany(ProductPack::class);
+    }
+
+    public function activePacks(): HasMany
+    {
+        return $this->packs()->where('is_active', true)->orderBy('units_per_pack');
     }
 
     public function suppliers(): BelongsToMany

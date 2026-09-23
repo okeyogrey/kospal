@@ -21,6 +21,7 @@ type RequestRow = {
         plan: string;
         subscription_status: string;
         subscription_ends_at: string | null;
+        branches: Array<{ id: number; name: string; is_active: boolean }>;
     };
     requested_by: {
         name: string | null;
@@ -36,6 +37,7 @@ type BusinessRow = {
     subscription_status: string;
     subscription_ends_at: string | null;
     owner: { name: string; email: string } | null;
+    branches: Array<{ id: number; name: string; is_active: boolean }>;
 };
 
 type Paginated<T> = {
@@ -48,6 +50,7 @@ export default function PlatformSubscriptionRequestsIndex({
     businesses,
     filters,
     plans,
+    plan_max_branches,
     subscription_statuses,
     default_subscription_days,
 }: {
@@ -55,6 +58,7 @@ export default function PlatformSubscriptionRequestsIndex({
     businesses: BusinessRow[];
     filters: { status: string };
     plans: string[];
+    plan_max_branches: Record<string, number>;
     subscription_statuses: string[];
     default_subscription_days: number;
 }) {
@@ -123,6 +127,7 @@ export default function PlatformSubscriptionRequestsIndex({
                                 key={item.id}
                                 item={item}
                                 plans={plans}
+                                planMaxBranches={plan_max_branches}
                                 subscriptionStatuses={subscription_statuses}
                                 endsDefault={endsDefault()}
                             />
@@ -140,6 +145,7 @@ export default function PlatformSubscriptionRequestsIndex({
                                 key={business.id}
                                 business={business}
                                 plans={plans}
+                                planMaxBranches={plan_max_branches}
                                 subscriptionStatuses={subscription_statuses}
                             />
                         ))}
@@ -150,14 +156,77 @@ export default function PlatformSubscriptionRequestsIndex({
     );
 }
 
+function KeepBranchFields({
+    branches,
+    selectedPlan,
+    planMaxBranches,
+    value,
+    onChange,
+    error,
+}: {
+    branches: Array<{ id: number; name: string; is_active: boolean }>;
+    selectedPlan: string;
+    planMaxBranches: Record<string, number>;
+    value: number[];
+    onChange: (ids: number[]) => void;
+    error?: string;
+}) {
+    const active = branches.filter((branch) => branch.is_active);
+    const max = planMaxBranches[selectedPlan] ?? active.length;
+
+    if (active.length <= max) {
+        return null;
+    }
+
+    const toggle = (id: number) => {
+        if (value.includes(id)) {
+            onChange(value.filter((item) => item !== id));
+
+            return;
+        }
+
+        onChange([...value, id]);
+    };
+
+    return (
+        <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">
+                Locations that stay open
+            </legend>
+            <p className="text-sm text-muted-foreground">
+                This plan allows {max} open location{max === 1 ? '' : 's'}. Extra
+                shops will be paused, not deleted, and cannot be swapped back
+                later without upgrading.
+            </p>
+            {active.map((branch) => (
+                <label
+                    key={branch.id}
+                    className="flex items-center gap-2 text-sm"
+                >
+                    <input
+                        type="checkbox"
+                        className="size-4"
+                        checked={value.includes(branch.id)}
+                        onChange={() => toggle(branch.id)}
+                    />
+                    {branch.name}
+                </label>
+            ))}
+            <InputError message={error} />
+        </fieldset>
+    );
+}
+
 function RequestCard({
     item,
     plans,
+    planMaxBranches,
     subscriptionStatuses,
     endsDefault,
 }: {
     item: RequestRow;
     plans: string[];
+    planMaxBranches: Record<string, number>;
     subscriptionStatuses: string[];
     endsDefault: string;
 }) {
@@ -166,6 +235,7 @@ function RequestCard({
         subscription_status: 'active',
         subscription_ends_at: endsDefault,
         reviewer_notes: '',
+        keep_branch_ids: [] as number[],
     });
     const rejectForm = useForm({
         reviewer_notes: '',
@@ -282,6 +352,16 @@ function RequestCard({
                                 }
                             />
                         </div>
+                        <KeepBranchFields
+                            branches={item.business.branches}
+                            selectedPlan={approveForm.data.plan}
+                            planMaxBranches={planMaxBranches}
+                            value={approveForm.data.keep_branch_ids}
+                            onChange={(ids) =>
+                                approveForm.setData('keep_branch_ids', ids)
+                            }
+                            error={approveForm.errors.keep_branch_ids}
+                        />
                         <Button
                             type="submit"
                             disabled={approveForm.processing}
@@ -344,10 +424,12 @@ function RequestCard({
 function BusinessCard({
     business,
     plans,
+    planMaxBranches,
     subscriptionStatuses,
 }: {
     business: BusinessRow;
     plans: string[];
+    planMaxBranches: Record<string, number>;
     subscriptionStatuses: string[];
 }) {
     const form = useForm({
@@ -355,6 +437,7 @@ function BusinessCard({
         subscription_status: business.subscription_status,
         subscription_ends_at: business.subscription_ends_at ?? '',
         reviewer_notes: '',
+        keep_branch_ids: [] as number[],
     });
 
     return (
@@ -364,6 +447,14 @@ function BusinessCard({
                 <p className="text-sm text-muted-foreground">
                     {business.owner?.name} · {business.owner?.email}
                 </p>
+                <KeepBranchFields
+                    branches={business.branches}
+                    selectedPlan={form.data.plan}
+                    planMaxBranches={planMaxBranches}
+                    value={form.data.keep_branch_ids}
+                    onChange={(ids) => form.setData('keep_branch_ids', ids)}
+                    error={form.errors.keep_branch_ids}
+                />
             </div>
             <form
                 className="flex flex-wrap items-end gap-2"

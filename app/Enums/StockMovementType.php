@@ -15,6 +15,7 @@ enum StockMovementType: string
     case Adjustment = 'adjustment';
     case StockCountVariance = 'stock_count_variance';
     case Return = 'return';
+    case SyncRejection = 'sync_rejection';
 
     /**
      * @return list<string>
@@ -33,6 +34,7 @@ enum StockMovementType: string
             self::SaleVoid,
             self::TransferIn,
             self::Return,
+            self::SyncRejection,
         ], true);
     }
 
@@ -56,6 +58,7 @@ enum StockMovementType: string
             self::Adjustment => 'Adjustment',
             self::StockCountVariance => 'Stock count variance',
             self::Return => 'Return',
+            self::SyncRejection => 'Sync rejected',
         };
     }
 }

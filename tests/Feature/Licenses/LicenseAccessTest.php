@@ -2,8 +2,10 @@
 
 use App\Enums\LicenseActivationMode;
 use App\Enums\Plan;
+use App\Enums\SubscriptionRequestStatus;
 use App\Enums\SubscriptionStatus;
 use App\Models\Category;
+use App\Models\SubscriptionRequest;
 use App\Models\User;
 use App\Services\BusinessOnboardingService;
 use App\Services\LicenseService;
@@ -34,6 +36,7 @@ it('starts a 30-day trial on desktop onboarding', function () {
     $business = $result['business']->fresh();
 
     expect($business->subscription_status)->toBe(SubscriptionStatus::Trial)
+        ->and($business->plan)->toBe(Plan::Pro)
         ->and($business->license_activation_mode)->toBe(LicenseActivationMode::Trial)
         ->and($business->subscription_ends_at)->not->toBeNull()
         ->and($business->subscription_ends_at->isFuture())->toBeTrue()
@@ -171,7 +174,12 @@ it('renders settings license for owners', function () {
             ->component('settings/license')
             ->has('license.machine_id')
             ->where('license.status', 'trial')
-            ->has('plans')
+            ->has('plans', 3)
+            ->where('plans.0.change_type', 'renew')
+            ->where('plans.1.change_type', 'upgrade')
+            ->has('payment_instructions')
+            ->has('requests')
+            ->has('branches')
         );
 });
 
@@ -206,4 +214,76 @@ it('blocks SaaS subscription writes when deployment mode is web', function () {
         ->assertSessionHas('error');
 
     expect(Category::query()->where('name', 'Blocked')->exists())->toBeFalse();
+});
+
+it('starts a desktop trial on the chosen edition', function () {
+    $owner = User::factory()->create();
+
+    $result = app(BusinessOnboardingService::class)->onboard($owner, [
+        'name' => 'Starter Trial Shop',
+        'country' => 'KE',
+        'currency' => 'KES',
+        'branch_name' => 'Main',
+        'trial_edition' => 'starter',
+    ]);
+
+    expect($result['business']->fresh()->plan)->toBe(Plan::Starter)
+        ->and($result['business']->fresh()->subscription_status)->toBe(SubscriptionStatus::Trial);
+});
+
+it('records a desktop edition request without unlocking the plan', function () {
+    ['owner' => $owner, 'business' => $business] = $this->createBusinessWithOwner([
+        'plan' => Plan::Starter,
+        'subscription_status' => SubscriptionStatus::Trial,
+        'license_activation_mode' => LicenseActivationMode::Trial,
+        'subscription_ends_at' => now()->addDays(12),
+    ]);
+
+    $this->actingAs($owner)
+        ->post(route('license.edition-request'), [
+            'requested_plan' => 'pro',
+            'notes' => 'Want transfers and a second shop',
+        ])
+        ->assertRedirect();
+
+    $request = SubscriptionRequest::query()->forBusiness($business)->first();
+
+    expect($request)->not->toBeNull()
+        ->and($request->requested_plan)->toBe(Plan::Pro)
+        ->and($request->changeType()->value)->toBe('upgrade')
+        ->and($request->status)->toBe(SubscriptionRequestStatus::Pending)
+        ->and($request->transaction_code)->toBeNull()
+        ->and($business->fresh()->plan)->toBe(Plan::Starter);
+});
+
+it('fulfills a pending edition request when a matching license is activated', function () {
+    ['owner' => $owner, 'business' => $business] = $this->createBusinessWithOwner([
+        'plan' => Plan::Starter,
+        'subscription_status' => SubscriptionStatus::Trial,
+        'license_activation_mode' => LicenseActivationMode::Trial,
+        'subscription_ends_at' => now()->addDays(5),
+    ]);
+
+    SubscriptionRequest::factory()->create([
+        'business_id' => $business->id,
+        'requested_by_user_id' => $owner->id,
+        'requested_plan' => Plan::Pro,
+        'current_plan' => Plan::Starter,
+        'transaction_code' => null,
+    ]);
+
+    $key = app(LicenseService::class)->issueKey([
+        'edition' => 'pro',
+        'days' => 365,
+    ]);
+
+    $this->actingAs($owner)
+        ->post(route('license.activate-online'), [
+            'license_key' => $key,
+        ])
+        ->assertRedirect();
+
+    expect($business->fresh()->plan)->toBe(Plan::Pro)
+        ->and(SubscriptionRequest::query()->forBusiness($business)->first()?->status)
+        ->toBe(SubscriptionRequestStatus::Approved);
 });

@@ -27,7 +27,7 @@ class PartialReturnRequest extends FormRequest
             'refund_method' => ['required', 'string', Rule::in(PaymentMethod::values())],
             'client_request_id' => ['required', 'string', 'uuid', 'max:64'],
             'manager_approval' => ['nullable', 'array'],
-            'manager_approval.pin' => ['nullable', 'string', 'max:8'],
+            'manager_approval.pin' => ['nullable', 'string', 'regex:/^\d{6}$/'],
             'manager_approval.login' => ['nullable', 'string', 'max:255'],
             'manager_approval.password' => ['nullable', 'string', 'max:255'],
             'items' => ['required', 'array', 'min:1'],

@@ -28,13 +28,14 @@ it('lets a new owner create a business and first branch', function () {
             'currency' => 'KES',
             'branch_name' => 'Main Counter',
             'branch_city' => 'Kisumu',
+            'trial_edition' => 'starter',
         ])
         ->assertRedirect(route('dashboard'));
 
     $business = Business::query()->where('name', 'Kisumu Retail')->first();
 
     expect($business)->not->toBeNull()
-        ->and($business->plan)->toBe(Plan::Enterprise)
+        ->and($business->plan)->toBe(Plan::Starter)
         ->and($business->subscription_status)->toBe(SubscriptionStatus::Trial)
         ->and($business->subscription_ends_at)->not->toBeNull()
         ->and($business->owner_user_id)->toBe($user->id)
@@ -51,6 +52,7 @@ it('prevents a user who already belongs to a business from onboarding again', fu
         'country' => 'KE',
         'currency' => 'KES',
         'branch_name' => 'Branch A',
+        'trial_edition' => 'pro',
     ])->assertRedirect(route('dashboard'));
 
     $this->actingAs($user->fresh())->post(route('onboarding.store'), [
@@ -61,4 +63,30 @@ it('prevents a user who already belongs to a business from onboarding again', fu
     ])->assertForbidden();
 
     expect(Business::query()->count())->toBe(1);
+});
+
+it('requires a trial edition on desktop onboarding', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post(route('onboarding.store'), [
+            'name' => 'No Edition Shop',
+            'country' => 'KE',
+            'currency' => 'KES',
+            'branch_name' => 'Main',
+        ])
+        ->assertSessionHasErrors('trial_edition');
+});
+
+it('shows edition choices on the onboarding wizard', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('onboarding.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('onboarding/create')
+            ->has('plans', 3)
+            ->where('default_trial_edition', 'pro')
+        );
 });

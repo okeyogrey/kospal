@@ -48,14 +48,26 @@ class PlatformSetting extends Model
      */
     public static function paymentInstructions(): array
     {
+        /** @var array{
+         *     title?: string,
+         *     body?: string,
+         *     bank_name?: string|null,
+         *     account_name?: string|null,
+         *     account_number?: string|null,
+         *     mobile_money?: string|null,
+         *     support_note?: string|null,
+         * } $configured
+         */
+        $configured = config('kospal.payment_instructions', []);
+
         $defaults = [
-            'title' => 'Payment instructions',
-            'body' => 'Pay using the details below, then submit your transaction code on the Subscription page for manual approval.',
-            'bank_name' => null,
-            'account_name' => null,
-            'account_number' => null,
-            'mobile_money' => null,
-            'support_note' => null,
+            'title' => $configured['title'] ?? 'How to pay for your edition',
+            'body' => $configured['body'] ?? 'Pay using the details below, then send your proof with the requested edition.',
+            'bank_name' => $configured['bank_name'] ?? null,
+            'account_name' => $configured['account_name'] ?? null,
+            'account_number' => $configured['account_number'] ?? null,
+            'mobile_money' => $configured['mobile_money'] ?? null,
+            'support_note' => $configured['support_note'] ?? null,
         ];
 
         /** @var array<string, mixed> $stored */

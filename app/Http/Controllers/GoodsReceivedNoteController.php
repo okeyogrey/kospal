@@ -159,12 +159,12 @@ class GoodsReceivedNoteController extends Controller
         $goodsReceivedNote->load([
             'items.product:id,name,sku',
             'supplier:id,name',
-            'branch:id,name',
+            'branch:id,business_id,name',
             'purchaseOrder:id,reference',
             'creator:id,name',
             'poster:id,name',
             'stockMovements.product:id,name',
-            'stockMovements.branch:id,name',
+            'stockMovements.branch:id,business_id,name',
             'stockMovements.user:id,name',
             'supplierInvoice:id,reference,status',
         ]);
@@ -182,6 +182,11 @@ class GoodsReceivedNoteController extends Controller
                 'metadata' => $log->metadata,
                 'created_at' => $log->created_at?->toIso8601String(),
             ]);
+
+        $permissions = [
+            'post' => $tenant->user()?->can('post', $goodsReceivedNote) ?? false,
+            'cancel' => $tenant->user()?->can('cancel', $goodsReceivedNote) ?? false,
+        ];
 
         return Inertia::render('goods-received/show', [
             'note' => [
@@ -217,10 +222,7 @@ class GoodsReceivedNoteController extends Controller
                 ])->values(),
             ],
             'activity' => $activity,
-            'permissions' => [
-                'post' => $tenant->user()?->can('post', $goodsReceivedNote) ?? false,
-                'cancel' => $tenant->user()?->can('cancel', $goodsReceivedNote) ?? false,
-            ],
+            'permissions' => $permissions,
             'currency' => $tenant->business()?->currency,
         ]);
     }

@@ -12,9 +12,9 @@ use Illuminate\Validation\ValidationException;
 class ManagerApprovalService
 {
     /**
-     * Resolve an approver via manager PIN, or login + password (legacy).
+     * Resolve an approver via a unique 6-digit manager PIN.
      *
-     * @param  array{pin?: string|null, login?: string|null, password?: string|null}|null  $approval
+     * @param  array{pin?: string|null}|null  $approval
      */
     public function resolve(
         Business $business,
@@ -26,56 +26,38 @@ class ManagerApprovalService
             return null;
         }
 
-        $actorRole = $this->roleFor($business, $actor);
-
-        if ($actorRole !== null && $actorRole->canApplySaleDiscount()) {
+        if ($this->actorCanSelfApprove($business, $actor)) {
             return $actor;
         }
 
         $pin = trim((string) ($approval['pin'] ?? ''));
 
-        if ($pin !== '') {
-            return $this->resolveByPin($business, $pin);
-        }
-
-        $login = trim((string) ($approval['login'] ?? ''));
-        $password = (string) ($approval['password'] ?? '');
-
-        if ($login === '' || $password === '') {
+        if ($pin === '') {
             throw ValidationException::withMessages([
-                'manager_approval' => 'Manager approval is required. Enter a manager PIN, or an owner/manager login and password.',
+                'manager_approval.pin' => 'Manager approval is required. Enter a 6-digit manager PIN.',
             ]);
         }
 
-        $approver = User::query()
-            ->where(function ($query) use ($login): void {
-                $query->where('email', $login)
-                    ->orWhere('phone', $login);
-            })
-            ->first();
+        return $this->resolveByPin($business, $pin);
+    }
 
-        if ($approver === null || ! Hash::check($password, $approver->password)) {
-            throw ValidationException::withMessages([
-                'manager_approval.password' => 'Invalid manager credentials.',
-            ]);
+    protected function actorCanSelfApprove(Business $business, User $actor): bool
+    {
+        $actorRole = $this->roleFor($business, $actor);
+
+        if ($actorRole !== null && $actorRole->canApplySaleDiscount()) {
+            return true;
         }
 
-        $role = $this->roleFor($business, $approver);
-
-        if ($role === null || ! $role->canApplySaleDiscount()) {
-            throw ValidationException::withMessages([
-                'manager_approval.login' => 'Only an active owner or manager of this business may approve.',
-            ]);
-        }
-
-        return $approver;
+        return $actorRole === BusinessRole::Cashier
+            && $business->cashiers_can_approve_price_overrides;
     }
 
     protected function resolveByPin(Business $business, string $pin): User
     {
-        if (! preg_match('/^\d{4,8}$/', $pin)) {
+        if (! preg_match('/^\d{6}$/', $pin)) {
             throw ValidationException::withMessages([
-                'manager_approval.pin' => 'Manager PIN must be 4 to 8 digits.',
+                'manager_approval.pin' => 'Manager PIN must be exactly 6 digits.',
             ]);
         }
 

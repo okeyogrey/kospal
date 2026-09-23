@@ -17,6 +17,7 @@ use App\Models\BusinessMembership;
 use App\Models\Customer;
 use App\Models\InventoryBalance;
 use App\Models\Product;
+use App\Models\ProductPack;
 use App\Models\Sale;
 use App\Models\User;
 use App\Services\SaleService;
@@ -28,6 +29,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -177,6 +179,7 @@ class SaleController extends Controller
         $productsById = Product::query()
             ->forBusiness($business)
             ->active()
+            ->with(['activePacks'])
             ->whereIn('id', $balances->pluck('product_id'))
             ->get()
             ->keyBy('id');
@@ -230,7 +233,11 @@ class SaleController extends Controller
             'permissions' => [
                 'discount' => $user->can('applyDiscount', Sale::class),
                 'negotiate' => $user->can('negotiatePrice', Sale::class),
-                'approve_self' => $user->can('applyDiscount', Sale::class),
+                'approve_self' => $user->can('applyDiscount', Sale::class)
+                    || (
+                        $membership?->role === BusinessRole::Cashier
+                        && (bool) $business->cashiers_can_approve_price_overrides
+                    ),
                 'create_customer' => $user->can('create', Customer::class),
                 'hold' => $user->can('hold', Sale::class),
                 'negotiation_floor_percent' => (int) ($membership->negotiation_floor_percent ?? 100),
@@ -264,6 +271,7 @@ class SaleController extends Controller
         $products = Product::query()
             ->forBusiness($business)
             ->active()
+            ->with(['activePacks'])
             ->search($search !== '' ? $search : null)
             ->orderBy('name')
             ->limit(40)
@@ -309,10 +317,24 @@ class SaleController extends Controller
         $product = Product::query()
             ->forBusiness($business)
             ->active()
+            ->with(['activePacks'])
             ->barcode($barcode)
             ->first();
 
+        $matchedPack = null;
+
         if ($product === null) {
+            $matchedPack = ProductPack::query()
+                ->forBusiness($business)
+                ->where('barcode', $barcode)
+                ->where('is_active', true)
+                ->with(['product' => fn ($q) => $q->active()->with('activePacks')])
+                ->first();
+
+            $product = $matchedPack?->product;
+        }
+
+        if ($product === null || ! $product->is_active) {
             return response()->json(['product' => null], 404);
         }
 
@@ -324,6 +346,7 @@ class SaleController extends Controller
 
         return response()->json([
             'product' => $this->posProductPayload($product, $quantity, $business->currency),
+            'product_pack_id' => $matchedPack?->id,
         ]);
     }
 
@@ -393,7 +416,7 @@ class SaleController extends Controller
         abort_unless($business, 403);
 
         $resumed = $sales->resume($sale, request()->user());
-        $resumed->loadMissing('items.product');
+        $resumed->loadMissing(['items.product', 'items.pack']);
         $quantities = InventoryBalance::query()
             ->forBusiness($business)
             ->where('branch_id', $resumed->branch_id)
@@ -403,17 +426,26 @@ class SaleController extends Controller
         return response()->json([
             'sale' => [
                 ...$this->heldPayload($resumed, $business->currency),
-                'items' => $resumed->items->map(fn ($item) => [
-                    'product_id' => $item->product_id,
-                    'name' => $item->product_name,
-                    'sku' => $item->sku,
-                    'quantity' => $item->quantity,
-                    'max_quantity' => max($item->quantity, (int) ($quantities[$item->product_id] ?? 0)),
-                    'unit_price_minor' => $item->unit_price,
-                    'list_unit_price_minor' => $item->list_unit_price,
-                    'min_selling_price_minor' => (int) ($item->product?->min_selling_price ?? 0),
-                    'is_negotiable' => (bool) ($item->product?->is_negotiable ?? true),
-                ])->values(),
+                'items' => $resumed->items->map(function ($item) use ($quantities) {
+                    $unitsPerPack = max(1, (int) ($item->pack?->units_per_pack ?? 1));
+                    $baseAvailable = (int) ($quantities[$item->product_id] ?? 0);
+                    $maxInSelectedUnit = (int) floor($baseAvailable / $unitsPerPack);
+
+                    return [
+                        'product_id' => $item->product_id,
+                        'product_pack_id' => $item->product_pack_id,
+                        'pack_name' => $item->pack_name ?? $item->pack?->name,
+                        'units_per_pack' => $unitsPerPack,
+                        'name' => $item->product_name,
+                        'sku' => $item->sku,
+                        'quantity' => $item->quantity,
+                        'max_quantity' => max($item->quantity, $maxInSelectedUnit),
+                        'unit_price_minor' => $item->unit_price,
+                        'list_unit_price_minor' => $item->list_unit_price,
+                        'min_selling_price_minor' => (int) ($item->product?->min_selling_price ?? 0) * $unitsPerPack,
+                        'is_negotiable' => (bool) ($item->product?->is_negotiable ?? true),
+                    ];
+                })->values(),
             ],
         ]);
     }
@@ -501,7 +533,11 @@ class SaleController extends Controller
                 'void' => $tenant->user()?->can('void', $sale) ?? false,
                 'return' => $tenant->user()?->can('returnItems', $sale) ?? false,
                 'reprint' => $tenant->user()?->can('reprint', $sale) ?? false,
-                'approve_self' => $tenant->user()?->can('applyDiscount', Sale::class) ?? false,
+                'approve_self' => ($tenant->user()?->can('applyDiscount', Sale::class) ?? false)
+                    || (
+                        $tenant->role() === BusinessRole::Cashier
+                        && (bool) $business->cashiers_can_approve_price_overrides
+                    ),
             ],
         ]);
     }
@@ -562,11 +598,16 @@ class SaleController extends Controller
      */
     protected function posProductPayload(Product $product, int $quantity, string $currency): array
     {
+        $packs = $product->relationLoaded('activePacks')
+            ? $product->activePacks
+            : $product->activePacks()->get();
+
         return [
             'id' => $product->id,
             'name' => $product->name,
             'sku' => $product->sku,
             'barcode' => $product->barcode,
+            'base_unit_name' => $product->base_unit_name ?: 'piece',
             'quantity' => $quantity,
             'selling_price_minor' => $product->selling_price,
             'cost_price_minor' => $product->cost_price,
@@ -574,6 +615,17 @@ class SaleController extends Controller
             'is_negotiable' => (bool) $product->is_negotiable,
             'selling_price_formatted' => Money::format($product->selling_price, $currency),
             'min_selling_price_formatted' => Money::format($product->min_selling_price, $currency),
+            'packs' => $packs->map(fn (ProductPack $pack) => [
+                'id' => $pack->id,
+                'name' => $pack->name,
+                'units_per_pack' => $pack->units_per_pack,
+                'barcode' => $pack->barcode,
+                'selling_price_minor' => $pack->effectiveSellingPrice((int) $product->selling_price),
+                'selling_price_formatted' => Money::format(
+                    $pack->effectiveSellingPrice((int) $product->selling_price),
+                    $currency,
+                ),
+            ])->values(),
         ];
     }
 
@@ -706,7 +758,7 @@ class SaleController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, array{value: string, label: string}>
+     * @return Collection<int, array{value: string, label: string}>
      */
     protected function paymentMethodOptions($business, FeatureFlagService $features)
     {

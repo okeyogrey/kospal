@@ -37,6 +37,7 @@ final class Navigation
             'stock-counts' => $catalogRoles,
             'inventory-timeline' => $catalogRoles,
             'inventory-valuation' => $catalogRoles,
+            'pos' => ['owner', 'manager', 'cashier'],
             'sales' => ['owner', 'manager', 'cashier'],
             'customers' => ['owner', 'manager', 'cashier'],
             'customer-payments' => $financeRoles,
@@ -49,8 +50,10 @@ final class Navigation
             'cash-sessions' => $financeRoles,
             'branches' => $ownerOnly,
             'subscription' => $ownerOnly,
+            'referrals' => $ownerOnly,
             'platform_subscriptions' => ['platform_super_admin'],
             'platform_payment_instructions' => ['platform_super_admin'],
+            'platform_referrals' => ['platform_super_admin'],
             'settings' => [...$tenantRoles, 'platform_super_admin'],
         ];
     }

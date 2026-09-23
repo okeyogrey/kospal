@@ -98,6 +98,8 @@ it('shows payment instructions and plans on the owner subscription page', functi
             ->component('subscription/index')
             ->where('payment_instructions.title', 'Pay offline')
             ->has('plans', 3)
+            ->where('plans.0.change_type', 'renew')
+            ->where('plans.1.change_type', 'upgrade')
             ->where('business.allows_write_access', true)
         );
 });

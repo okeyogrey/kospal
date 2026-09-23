@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default KOSPAL desktop capabilities","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open"]}}
+{"default":{"identifier":"default","description":"Default KOSPAL desktop capabilities","remote":{"urls":["http://127.0.0.1:*/*","http://localhost:*/*"]},"local":true,"windows":["main"],"permissions":["core:default","shell:allow-open"]}}

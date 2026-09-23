@@ -1,4 +1,4 @@
-import { Head, Link, router, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { PackageCheck, PackageX, TriangleAlert, Warehouse } from 'lucide-react';
 import { AnalyticsPieChart } from '@/components/analytics/pie-chart';
 import { MetricCard } from '@/components/analytics/metric-card';
@@ -31,7 +31,19 @@ type BalanceRow = {
     value_formatted: string;
 };
 
-type Option = { id: number; name: string; sku?: string };
+type Option = {
+    id: number;
+    name: string;
+    sku?: string;
+    barcode?: string | null;
+    base_unit_name?: string;
+    packs?: Array<{
+        id: number;
+        name: string;
+        units_per_pack: number;
+        barcode?: string | null;
+    }>;
+};
 
 type Paginated<T> = {
     data: T[];
@@ -82,9 +94,14 @@ export default function InventoryIndex({
     adjustmentReasons: AdjustmentReason[];
     currency: string;
 }) {
+    const flash = usePage().props.flash as
+        | { success?: string | null; error?: string | null }
+        | undefined;
+
     const receiveForm = useForm({
         branch_id: String(filters.branch_id ?? branches[0]?.id ?? ''),
         product_id: '',
+        product_pack_id: '',
         quantity: '',
         unit_cost: '',
         note: '',
@@ -93,11 +110,19 @@ export default function InventoryIndex({
     const adjustForm = useForm({
         branch_id: String(filters.branch_id ?? branches[0]?.id ?? ''),
         product_id: '',
+        product_pack_id: '',
         quantity: '',
         direction: 'decrease',
         reason: 'loss',
         note: '',
     });
+
+    const receiveProduct = products.find(
+        (product) => String(product.id) === String(receiveForm.data.product_id),
+    );
+    const adjustProduct = products.find(
+        (product) => String(product.id) === String(adjustForm.data.product_id),
+    );
 
     const reasonsForDirection = adjustmentReasons.filter((reason) =>
         adjustForm.data.direction === 'increase'
@@ -115,6 +140,17 @@ export default function InventoryIndex({
         <>
             <Head title="Inventory" />
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6">
+                {flash?.success || flash?.error ? (
+                    <div
+                        className={
+                            flash.error
+                                ? 'rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive'
+                                : 'rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-sm text-primary'
+                        }
+                    >
+                        {flash.error ?? flash.success}
+                    </div>
+                ) : null}
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                     <div>
                         <h1 className="font-display text-2xl font-semibold">
@@ -322,6 +358,15 @@ export default function InventoryIndex({
                                 className="space-y-3"
                                 onSubmit={(event) => {
                                     event.preventDefault();
+                                    receiveForm.transform((data) => ({
+                                        ...data,
+                                        product_pack_id:
+                                            data.product_pack_id || null,
+                                        unit_cost:
+                                            data.unit_cost === ''
+                                                ? null
+                                                : data.unit_cost,
+                                    }));
                                     receiveForm.post(storeReceiveStock.url(), {
                                         preserveScroll: true,
                                         onSuccess: () =>
@@ -329,6 +374,7 @@ export default function InventoryIndex({
                                                 'quantity',
                                                 'unit_cost',
                                                 'note',
+                                                'product_pack_id',
                                             ),
                                     });
                                 }}
@@ -363,15 +409,64 @@ export default function InventoryIndex({
                                     id="receive_product"
                                     products={products}
                                     value={receiveForm.data.product_id}
-                                    onChange={(value) =>
-                                        receiveForm.setData('product_id', value)
-                                    }
+                                    onChange={(value) => {
+                                        receiveForm.setData({
+                                            ...receiveForm.data,
+                                            product_id: value,
+                                            product_pack_id: '',
+                                        });
+                                    }}
                                     error={receiveForm.errors.product_id}
                                     required
                                 />
+                                {(receiveProduct?.packs?.length ?? 0) > 0 ? (
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="receive_pack">
+                                            Unit
+                                        </Label>
+                                        <select
+                                            id="receive_pack"
+                                            value={
+                                                receiveForm.data.product_pack_id
+                                            }
+                                            onChange={(e) =>
+                                                receiveForm.setData(
+                                                    'product_pack_id',
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                        >
+                                            <option value="">
+                                                {receiveProduct?.base_unit_name ||
+                                                    'piece'}{' '}
+                                                (base)
+                                            </option>
+                                            {receiveProduct?.packs?.map(
+                                                (pack) => (
+                                                    <option
+                                                        key={pack.id}
+                                                        value={pack.id}
+                                                    >
+                                                        {pack.name} (
+                                                        {pack.units_per_pack}{' '}
+                                                        {receiveProduct.base_unit_name ||
+                                                            'pcs'}
+                                                        )
+                                                    </option>
+                                                ),
+                                            )}
+                                        </select>
+                                    </div>
+                                ) : null}
                                 <div className="grid gap-2">
                                     <Label htmlFor="receive_quantity">
                                         Quantity
+                                        {receiveForm.data.product_pack_id
+                                            ? ' (packs)'
+                                            : receiveProduct?.base_unit_name
+                                              ? ` (${receiveProduct.base_unit_name}s)`
+                                              : ''}
                                     </Label>
                                     <Input
                                         id="receive_quantity"
@@ -431,6 +526,12 @@ export default function InventoryIndex({
                                 >
                                     Record stock received
                                 </Button>
+                                <InputError
+                                    message={
+                                        receiveForm.errors.product_pack_id ??
+                                        receiveForm.errors.branch_id
+                                    }
+                                />
                             </form>
                         </section>
 
@@ -442,12 +543,18 @@ export default function InventoryIndex({
                                 className="space-y-3"
                                 onSubmit={(event) => {
                                     event.preventDefault();
+                                    adjustForm.transform((data) => ({
+                                        ...data,
+                                        product_pack_id:
+                                            data.product_pack_id || null,
+                                    }));
                                     adjustForm.post(storeAdjustment.url(), {
                                         preserveScroll: true,
                                         onSuccess: () =>
                                             adjustForm.reset(
                                                 'quantity',
                                                 'note',
+                                                'product_pack_id',
                                             ),
                                     });
                                 }}
@@ -483,11 +590,55 @@ export default function InventoryIndex({
                                     products={products}
                                     value={adjustForm.data.product_id}
                                     onChange={(value) =>
-                                        adjustForm.setData('product_id', value)
+                                        adjustForm.setData({
+                                            ...adjustForm.data,
+                                            product_id: value,
+                                            product_pack_id: '',
+                                        })
                                     }
                                     error={adjustForm.errors.product_id}
                                     required
                                 />
+                                {(adjustProduct?.packs?.length ?? 0) > 0 ? (
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="adjust_pack">
+                                            Unit
+                                        </Label>
+                                        <select
+                                            id="adjust_pack"
+                                            value={
+                                                adjustForm.data.product_pack_id
+                                            }
+                                            onChange={(e) =>
+                                                adjustForm.setData(
+                                                    'product_pack_id',
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                        >
+                                            <option value="">
+                                                {adjustProduct?.base_unit_name ||
+                                                    'piece'}{' '}
+                                                (base)
+                                            </option>
+                                            {adjustProduct?.packs?.map(
+                                                (pack) => (
+                                                    <option
+                                                        key={pack.id}
+                                                        value={pack.id}
+                                                    >
+                                                        {pack.name} (
+                                                        {pack.units_per_pack}{' '}
+                                                        {adjustProduct.base_unit_name ||
+                                                            'pcs'}
+                                                        )
+                                                    </option>
+                                                ),
+                                            )}
+                                        </select>
+                                    </div>
+                                ) : null}
                                 <div className="grid gap-2">
                                     <Label htmlFor="adjust_direction">
                                         Direction

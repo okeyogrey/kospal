@@ -9,7 +9,7 @@ it('returns no navigation keys when role is null', function () {
 it('limits cashier navigation', function () {
     $keys = Navigation::keysForRole('cashier');
 
-    expect($keys)->toContain('dashboard', 'sales', 'customers')
+    expect($keys)->toContain('dashboard', 'pos', 'sales', 'customers')
         ->and($keys)->not->toContain('subscription', 'branches', 'expenses', 'staff');
 });
 
@@ -43,7 +43,7 @@ it('allows owners to see organization admin destinations', function () {
 
     $keys = Navigation::keysForRole('owner');
 
-    expect($keys)->toContain('branches', 'subscription', 'staff', 'reports');
+    expect($keys)->toContain('branches', 'subscription', 'referrals', 'staff', 'reports');
 });
 
 it('exposes platform admin subscription destinations in web mode', function () {
@@ -54,8 +54,17 @@ it('exposes platform admin subscription destinations in web mode', function () {
     expect($keys)->toContain(
         'platform_subscriptions',
         'platform_payment_instructions',
+        'platform_referrals',
         'settings',
     )->and($keys)->not->toContain('dashboard', 'subscription', 'products');
+});
+
+it('keeps referrals visible to owners in desktop mode', function () {
+    config(['deployment.mode' => 'desktop']);
+
+    expect(Navigation::keysForRole('owner'))
+        ->toContain('referrals')
+        ->not->toContain('subscription');
 });
 
 it('hides platform destinations in desktop mode', function () {
@@ -66,5 +75,6 @@ it('hides platform destinations in desktop mode', function () {
     expect($keys)->not->toContain(
         'platform_subscriptions',
         'platform_payment_instructions',
+        'platform_referrals',
     )->and($keys)->toContain('settings');
 });

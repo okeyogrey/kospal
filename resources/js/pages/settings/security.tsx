@@ -130,8 +130,8 @@ export default function Security(props: Props) {
                         title="Manager approval PIN"
                         description={
                             props.hasApprovalPin
-                                ? 'A PIN is set for approving cashier price overrides at the POS.'
-                                : 'Set a 4–8 digit PIN cashiers can use instead of your password.'
+                                ? 'Your unique 6-digit PIN is set. Cashiers use it at POS when a price needs approval — the sale records who approved.'
+                                : 'Set a unique 6-digit PIN. No two managers in this business may share the same PIN.'
                         }
                     />
 
@@ -151,8 +151,8 @@ export default function Security(props: Props) {
                                         name="pin"
                                         inputMode="numeric"
                                         autoComplete="off"
-                                        maxLength={8}
-                                        placeholder="4–8 digits"
+                                        maxLength={6}
+                                        placeholder="6 digits"
                                         className="mt-1 block w-full"
                                     />
                                     <InputError message={errors.pin} />
@@ -167,8 +167,8 @@ export default function Security(props: Props) {
                                         name="pin_confirmation"
                                         inputMode="numeric"
                                         autoComplete="off"
-                                        maxLength={8}
-                                        placeholder="Repeat PIN"
+                                        maxLength={6}
+                                        placeholder="Repeat 6-digit PIN"
                                         className="mt-1 block w-full"
                                     />
                                     <InputError

@@ -34,11 +34,11 @@ export function BranchSelector() {
                 <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 max-w-[10rem] gap-2 border-border/80 bg-background/70 px-2.5 sm:max-w-[14rem]"
+                    className="h-9 w-9 gap-0 border-border/80 bg-background/70 px-0 sm:w-auto sm:max-w-[14rem] sm:gap-2 sm:px-2.5"
                     aria-label={t('topbar.branch')}
                 >
                     <MapPin className="size-4 shrink-0 text-primary" />
-                    <span className="truncate text-xs font-medium">
+                    <span className="hidden truncate text-xs font-medium sm:inline">
                         {workspace.branch?.name ?? t('topbar.no_branch')}
                     </span>
                 </Button>

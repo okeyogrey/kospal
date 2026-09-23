@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\Business;
 use App\Models\Product;
+use App\Models\ProductSupplier;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Services\Sync\SyncRecorder;
 use App\Support\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -14,6 +16,7 @@ class SupplierService
 {
     public function __construct(
         protected AuditLogger $audit,
+        protected SyncRecorder $sync,
     ) {}
 
     /**
@@ -122,7 +125,9 @@ class SupplierService
         $productIds = array_values(array_unique(array_map('intval', $productIds)));
 
         if ($productIds === []) {
-            $supplier->products()->detach();
+            $this->sync->track(ProductSupplier::class, ['supplier_id' => $supplier->id], function () use ($supplier): void {
+                $supplier->products()->detach();
+            });
 
             return;
         }
@@ -147,6 +152,8 @@ class SupplierService
             ];
         }
 
-        $supplier->products()->sync($sync);
+        $this->sync->track(ProductSupplier::class, ['supplier_id' => $supplier->id], function () use ($supplier, $sync): void {
+            $supplier->products()->sync($sync);
+        });
     }
 }

@@ -11,6 +11,7 @@ use App\Models\Business;
 use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteItem;
 use App\Models\Product;
+use App\Models\ProductPack;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\Supplier;
@@ -93,8 +94,10 @@ class GoodsReceivedNoteService
                     'business_id' => $business->id,
                     'goods_received_note_id' => $grn->id,
                     'product_id' => $item['product']->id,
+                    'product_pack_id' => $item['pack']?->id,
                     'purchase_order_item_id' => $item['purchase_order_item']?->id,
                     'quantity' => $item['quantity'],
+                    'pack_quantity' => $item['pack_quantity'],
                     'unit_cost' => $item['unit_cost'],
                 ]);
             }
@@ -235,8 +238,8 @@ class GoodsReceivedNoteService
     }
 
     /**
-     * @param  list<array{product_id: int, quantity: int, unit_cost: int, purchase_order_item_id?: int|null}>  $rawItems
-     * @return list<array{product: Product, quantity: int, unit_cost: int, purchase_order_item: PurchaseOrderItem|null}>
+     * @param  list<array{product_id: int, quantity: int, unit_cost: int, product_pack_id?: int|null, purchase_order_item_id?: int|null}>  $rawItems
+     * @return list<array{product: Product, pack: ProductPack|null, quantity: int, pack_quantity: int|null, unit_cost: int, purchase_order_item: PurchaseOrderItem|null}>
      */
     protected function normalizeItems(Business $business, array $rawItems, ?PurchaseOrder $purchaseOrder): array
     {
@@ -251,24 +254,28 @@ class GoodsReceivedNoteService
 
         foreach ($rawItems as $index => $raw) {
             $productId = (int) $raw['product_id'];
-            $quantity = (int) $raw['quantity'];
-            $unitCost = (int) $raw['unit_cost'];
+            $inputQuantity = (int) $raw['quantity'];
+            $unitCostInput = (int) $raw['unit_cost'];
+            $packId = isset($raw['product_pack_id']) && $raw['product_pack_id'] !== null
+                ? (int) $raw['product_pack_id']
+                : null;
+            $lineKey = $productId.':'.($packId ?? 0);
 
-            if ($quantity < 1) {
+            if ($inputQuantity < 1) {
                 throw ValidationException::withMessages([
                     "items.{$index}.quantity" => 'Received quantity must be at least 1.',
                 ]);
             }
 
-            if ($unitCost < 0) {
+            if ($unitCostInput < 0) {
                 throw ValidationException::withMessages([
                     "items.{$index}.unit_cost" => 'Unit cost cannot be negative.',
                 ]);
             }
 
-            if (isset($seen[$productId])) {
+            if (isset($seen[$lineKey])) {
                 throw ValidationException::withMessages([
-                    "items.{$index}.product_id" => 'Each product can only appear once.',
+                    "items.{$index}.product_id" => 'Each product/pack combination can only appear once.',
                 ]);
             }
 
@@ -279,6 +286,28 @@ class GoodsReceivedNoteService
                     "items.{$index}.product_id" => 'Selected product is invalid for this business.',
                 ]);
             }
+
+            $pack = null;
+            $unitsPerPack = 1;
+            if ($packId !== null) {
+                $pack = ProductPack::query()
+                    ->forBusiness($business)
+                    ->whereKey($packId)
+                    ->where('product_id', $product->id)
+                    ->where('is_active', true)
+                    ->first();
+
+                if ($pack === null) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.product_pack_id" => 'Selected pack is invalid for this product.',
+                    ]);
+                }
+
+                $unitsPerPack = max(1, (int) $pack->units_per_pack);
+            }
+
+            $baseQuantity = $inputQuantity * $unitsPerPack;
+            $unitCostPerBase = (int) floor($unitCostInput / $unitsPerPack);
 
             $poItem = null;
             if ($purchaseOrder !== null) {
@@ -295,7 +324,7 @@ class GoodsReceivedNoteService
                     ]);
                 }
 
-                if ($quantity > $poItem->quantityOutstanding()) {
+                if ($baseQuantity > $poItem->quantityOutstanding()) {
                     throw ValidationException::withMessages([
                         "items.{$index}.quantity" => sprintf(
                             'Cannot receive more than outstanding quantity (%d).',
@@ -305,11 +334,13 @@ class GoodsReceivedNoteService
                 }
             }
 
-            $seen[$productId] = true;
+            $seen[$lineKey] = true;
             $normalized[] = [
                 'product' => $product,
-                'quantity' => $quantity,
-                'unit_cost' => $unitCost,
+                'pack' => $pack,
+                'quantity' => $baseQuantity,
+                'pack_quantity' => $pack ? $inputQuantity : null,
+                'unit_cost' => $unitCostPerBase,
                 'purchase_order_item' => $poItem,
             ];
         }

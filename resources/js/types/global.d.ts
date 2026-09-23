@@ -32,6 +32,10 @@ declare module '@inertiajs/core' {
                 success: string | null;
                 error: string | null;
             };
+            shopSync: {
+                linked: boolean;
+                conflicts: number;
+            };
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

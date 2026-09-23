@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\Plan;
+use App\Enums\PlanChangeType;
 use App\Enums\SubscriptionRequestStatus;
 use App\Models\Concerns\BelongsToBusiness;
 use Database\Factories\SubscriptionRequestFactory;
@@ -51,5 +52,10 @@ class SubscriptionRequest extends Model
     public function isPending(): bool
     {
         return $this->status === SubscriptionRequestStatus::Pending;
+    }
+
+    public function changeType(): PlanChangeType
+    {
+        return $this->current_plan->changeTypeToward($this->requested_plan);
     }
 }

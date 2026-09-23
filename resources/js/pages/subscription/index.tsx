@@ -1,62 +1,46 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { CreditCard, Lock } from 'lucide-react';
+import { EditionCards } from '@/components/edition-cards';
 import InputError from '@/components/input-error';
+import { PaymentInstructionsCard } from '@/components/payment-instructions-card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import {
+    type EditionCard,
+    type EditionChangeType,
+    type EditionRequestRecord,
+    type PaymentInstructions,
+    changeTypeLabel,
+    featureLabel,
+    selectEditionLabel,
+    suggestedEdition,
+} from '@/lib/editions';
 import { index as subscriptionIndex } from '@/routes/subscription';
 import { store } from '@/routes/subscription/requests';
-
-type PlanCard = {
-    key: string;
-    name: string;
-    description: string;
-    max_branches: number;
-    max_staff: number | null;
-    features: string[];
-};
-
-type PaymentInstructions = {
-    title: string;
-    body: string;
-    bank_name: string | null;
-    account_name: string | null;
-    account_number: string | null;
-    mobile_money: string | null;
-    support_note: string | null;
-};
-
-const FEATURE_LABELS: Record<string, string> = {
-    core: 'Core POS, catalog, and inventory',
-    advanced_reports: 'Advanced reports',
-    csv_export: 'CSV export',
-    stock_transfers: 'Stock transfers',
-    audit_logs: 'Enterprise audit logs',
-    consolidated_reports: 'Consolidated multi-branch reports',
-};
 
 function statusMessage(status: string): { title: string; body: string } {
     switch (status) {
         case 'pending':
             return {
                 title: 'Subscription pending approval',
-                body: 'Your account is read-only until a platform admin verifies payment. Follow the instructions below, then submit your transaction code.',
+                body: 'Your account is read-only until a platform admin verifies payment. Choose an edition, pay, then submit your transaction code.',
             };
         case 'expired':
             return {
                 title: 'Subscription expired',
-                body: 'Existing data stays visible. Renew by paying with the instructions below and submitting a new transaction code.',
+                body: 'Existing data stays visible. Renew or change edition by paying and submitting a new transaction code.',
             };
         case 'suspended':
             return {
                 title: 'Subscription suspended',
-                body: 'Operational actions are blocked. Contact support or submit a new payment request for review.',
+                body: 'Operational actions are blocked. Submit a new payment request for review.',
             };
         default:
             return {
                 title: 'Subscription active',
-                body: 'You can request a plan change after completing an external payment.',
+                body: 'Choose upgrade, renew, or downgrade, pay outside the app, then submit proof. Features change only after approval.',
             };
     }
 }
@@ -68,6 +52,7 @@ export default function SubscriptionIndex({
     payment_instructions,
     requests,
     has_pending_request,
+    pricing,
 }: {
     business: {
         id: number;
@@ -84,31 +69,32 @@ export default function SubscriptionIndex({
         staff_seats: number;
         features: string[];
     };
-    plans: PlanCard[];
+    plans: EditionCard[];
     payment_instructions: PaymentInstructions | null;
-    requests: Array<{
-        id: number;
-        requested_plan: string;
-        current_plan: string;
-        status: string;
-        notes: string | null;
-        transaction_code: string;
-        reviewer_notes: string | null;
-        reviewed_by: string | null;
-        created_at: string | null;
-        reviewed_at: string | null;
-    }>;
+    requests: EditionRequestRecord[];
     has_pending_request: boolean;
+    pricing?: {
+        discount_percent: number;
+        list_formatted: string;
+        due_formatted: string;
+        available_percent: number;
+    };
 }) {
     const flash = usePage().props.flash as
         | { success?: string; error?: string }
         | undefined;
     const requestForm = useForm({
-        requested_plan: business.plan === 'starter' ? 'pro' : business.plan,
+        requested_plan: suggestedEdition(business.plan),
         transaction_code: '',
         notes: '',
     });
     const notice = statusMessage(business.subscription_status);
+    const currentPlan = plans.find((plan) => plan.key === business.plan);
+    const selectedPlan =
+        plans.find((plan) => plan.key === requestForm.data.requested_plan) ??
+        currentPlan;
+    const changeType: EditionChangeType =
+        selectedPlan?.change_type ?? 'renew';
 
     return (
         <>
@@ -119,8 +105,9 @@ export default function SubscriptionIndex({
                         Subscription
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        Compare plans, pay offline, and submit your transaction
-                        code for {business.name}.
+                        Choose an edition for {business.name}, pay offline, then
+                        submit proof. Approval switches the plan — selecting one
+                        here does not.
                     </p>
                 </div>
 
@@ -151,7 +138,7 @@ export default function SubscriptionIndex({
                     <div className="mb-4 flex flex-wrap items-center gap-2">
                         <CreditCard className="size-4 text-primary" />
                         <h2 className="font-medium">Current status</h2>
-                        <Badge>{business.plan}</Badge>
+                        <Badge>{currentPlan?.name ?? business.plan}</Badge>
                         <Badge variant="secondary">
                             {business.subscription_status}
                         </Badge>
@@ -185,132 +172,45 @@ export default function SubscriptionIndex({
                             <dt className="text-muted-foreground">Features</dt>
                             <dd className="font-medium">
                                 {limits.features
-                                    .map(
-                                        (feature) =>
-                                            FEATURE_LABELS[feature] ?? feature,
-                                    )
+                                    .map((feature) => featureLabel(feature))
                                     .join(', ')}
                             </dd>
                         </div>
                     </dl>
                 </section>
 
-                <section className="grid gap-4 lg:grid-cols-3">
-                    {plans.map((plan) => {
-                        const isCurrent = plan.key === business.plan;
+                {pricing && pricing.available_percent > 0 ? (
+                    <Alert>
+                        <AlertTitle>
+                            Referral credit: {pricing.discount_percent}% off
+                        </AlertTitle>
+                        <AlertDescription>
+                            Pay {pricing.due_formatted} instead of{' '}
+                            {pricing.list_formatted} for this first paid period.
+                            {pricing.available_percent > 100
+                                ? ` Extra ${pricing.available_percent - 100}% stays for later payments.`
+                                : ''}
+                        </AlertDescription>
+                    </Alert>
+                ) : null}
 
-                        return (
-                            <div
-                                key={plan.key}
-                                className={`rounded-2xl border p-5 ${
-                                    isCurrent
-                                        ? 'border-primary bg-primary/5'
-                                        : 'border-border/80 bg-card/80'
-                                }`}
-                            >
-                                <div className="mb-2 flex items-center gap-2">
-                                    <h2 className="font-display text-xl font-semibold">
-                                        {plan.name}
-                                    </h2>
-                                    {isCurrent ? (
-                                        <Badge>Current</Badge>
-                                    ) : null}
-                                </div>
-                                <p className="mb-4 text-sm text-muted-foreground">
-                                    {plan.description}
-                                </p>
-                                <p className="mb-3 text-sm font-medium">
-                                    {plan.max_branches} branches ·{' '}
-                                    {plan.max_staff ?? 'Unlimited'} staff
-                                </p>
-                                <ul className="space-y-1.5 text-sm">
-                                    {plan.features.map((feature) => (
-                                        <li key={feature}>
-                                            {FEATURE_LABELS[feature] ??
-                                                feature}
-                                        </li>
-                                    ))}
-                                </ul>
-                                {!isCurrent && !has_pending_request ? (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        className="mt-4 w-full"
-                                        onClick={() =>
-                                            requestForm.setData(
-                                                'requested_plan',
-                                                plan.key,
-                                            )
-                                        }
-                                    >
-                                        Select {plan.name}
-                                    </Button>
-                                ) : null}
-                            </div>
-                        );
-                    })}
-                </section>
+                <EditionCards
+                    plans={plans}
+                    selected={requestForm.data.requested_plan}
+                    onSelect={(key) =>
+                        requestForm.setData('requested_plan', key)
+                    }
+                    disabled={has_pending_request}
+                />
 
                 <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
-                    <section className="rounded-2xl border border-border/80 bg-card/80 p-5">
-                        <h2 className="mb-2 font-medium">
-                            {payment_instructions?.title}
-                        </h2>
-                        <p className="mb-4 whitespace-pre-wrap text-sm text-muted-foreground">
-                            {payment_instructions?.body}
-                        </p>
-                        <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                            {payment_instructions?.bank_name ? (
-                                <div>
-                                    <dt className="text-muted-foreground">
-                                        Bank
-                                    </dt>
-                                    <dd className="font-medium">
-                                        {payment_instructions.bank_name}
-                                    </dd>
-                                </div>
-                            ) : null}
-                            {payment_instructions?.account_name ? (
-                                <div>
-                                    <dt className="text-muted-foreground">
-                                        Account name
-                                    </dt>
-                                    <dd className="font-medium">
-                                        {payment_instructions.account_name}
-                                    </dd>
-                                </div>
-                            ) : null}
-                            {payment_instructions?.account_number ? (
-                                <div>
-                                    <dt className="text-muted-foreground">
-                                        Account number
-                                    </dt>
-                                    <dd className="font-medium">
-                                        {payment_instructions.account_number}
-                                    </dd>
-                                </div>
-                            ) : null}
-                            {payment_instructions?.mobile_money ? (
-                                <div>
-                                    <dt className="text-muted-foreground">
-                                        Mobile money
-                                    </dt>
-                                    <dd className="font-medium">
-                                        {payment_instructions.mobile_money}
-                                    </dd>
-                                </div>
-                            ) : null}
-                        </dl>
-                        {payment_instructions?.support_note ? (
-                            <p className="mt-4 text-sm text-muted-foreground">
-                                {payment_instructions.support_note}
-                            </p>
-                        ) : null}
-                    </section>
+                    <PaymentInstructionsCard
+                        instructions={payment_instructions}
+                    />
 
                     <section className="rounded-2xl border border-border/80 bg-card/80 p-5">
                         <h2 className="mb-3 font-medium">
-                            Submit payment proof
+                            Submit {changeTypeLabel(changeType).toLowerCase()} proof
                         </h2>
                         {has_pending_request ? (
                             <p className="text-sm text-muted-foreground">
@@ -332,34 +232,22 @@ export default function SubscriptionIndex({
                                     });
                                 }}
                             >
-                                <div className="grid gap-2">
-                                    <Label htmlFor="requested_plan">Plan</Label>
-                                    <select
-                                        id="requested_plan"
-                                        className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
-                                        value={requestForm.data.requested_plan}
-                                        onChange={(e) =>
-                                            requestForm.setData(
-                                                'requested_plan',
-                                                e.target.value,
-                                            )
-                                        }
-                                    >
-                                        {plans.map((plan) => (
-                                            <option
-                                                key={plan.key}
-                                                value={plan.key}
-                                            >
-                                                {plan.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <InputError
-                                        message={
-                                            requestForm.errors.requested_plan
-                                        }
-                                    />
-                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    {selectEditionLabel(
+                                        selectedPlan ?? {
+                                            key: requestForm.data.requested_plan,
+                                            name: requestForm.data.requested_plan,
+                                            description: '',
+                                            max_branches: 0,
+                                            max_staff: null,
+                                            features: [],
+                                            is_current: false,
+                                            change_type: changeType,
+                                        },
+                                    )}
+                                    . Features change only after a platform
+                                    admin approves this payment.
+                                </p>
                                 <div className="grid gap-2">
                                     <Label htmlFor="transaction_code">
                                         Transaction code
@@ -368,10 +256,10 @@ export default function SubscriptionIndex({
                                         id="transaction_code"
                                         className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
                                         value={requestForm.data.transaction_code}
-                                        onChange={(e) =>
+                                        onChange={(event) =>
                                             requestForm.setData(
                                                 'transaction_code',
-                                                e.target.value,
+                                                event.target.value,
                                             )
                                         }
                                         placeholder="e.g. MPesa receipt or bank ref"
@@ -391,10 +279,10 @@ export default function SubscriptionIndex({
                                         id="notes"
                                         className="border-input bg-background min-h-24 w-full rounded-md border px-3 py-2 text-sm"
                                         value={requestForm.data.notes}
-                                        onChange={(e) =>
+                                        onChange={(event) =>
                                             requestForm.setData(
                                                 'notes',
-                                                e.target.value,
+                                                event.target.value,
                                             )
                                         }
                                     />
@@ -402,12 +290,15 @@ export default function SubscriptionIndex({
                                         message={requestForm.errors.notes}
                                     />
                                 </div>
+                                <InputError
+                                    message={requestForm.errors.requested_plan}
+                                />
                                 <Button
                                     type="submit"
                                     disabled={requestForm.processing}
                                     className="w-full"
                                 >
-                                    Submit for approval
+                                    Submit {changeTypeLabel(changeType).toLowerCase()} for approval
                                 </Button>
                             </form>
                         )}
@@ -420,7 +311,7 @@ export default function SubscriptionIndex({
                     </div>
                     {requests.length === 0 ? (
                         <p className="p-4 text-sm text-muted-foreground">
-                            No subscription requests yet.
+                            No edition requests yet.
                         </p>
                     ) : (
                         <ul className="divide-y divide-border/70">
@@ -431,7 +322,8 @@ export default function SubscriptionIndex({
                                 >
                                     <div>
                                         <p className="font-medium">
-                                            {item.current_plan} →{' '}
+                                            {changeTypeLabel(item.change_type)}{' '}
+                                            · {item.current_plan} →{' '}
                                             {item.requested_plan}
                                         </p>
                                         <p className="text-muted-foreground">

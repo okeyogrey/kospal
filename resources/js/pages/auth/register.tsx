@@ -11,9 +11,15 @@ import { store } from '@/routes/register';
 
 type Props = {
     passwordRules: string;
+    referral?: {
+        code: string;
+        referrer_name: string;
+        expires_at: string;
+        usable: boolean;
+    } | null;
 };
 
-export default function Register({ passwordRules }: Props) {
+export default function Register({ passwordRules, referral }: Props) {
     return (
         <>
             <Head title="Register" />
@@ -25,6 +31,13 @@ export default function Register({ passwordRules }: Props) {
             >
                 {({ processing, errors }) => (
                     <>
+                        {referral?.usable ? (
+                            <p className="rounded-md border border-border/80 bg-muted/40 px-3 py-2 text-sm">
+                                Invite from {referral.referrer_name} applied.
+                                After you set up the shop and stay active for a
+                                week, you both get 10% off the first payment.
+                            </p>
+                        ) : null}
                         <div className="grid gap-6">
                             <div className="grid gap-2">
                                 <Label htmlFor="name">Name</Label>

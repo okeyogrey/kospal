@@ -20,6 +20,7 @@ export type NavKey =
     | 'stock-counts'
     | 'inventory-timeline'
     | 'inventory-valuation'
+    | 'pos'
     | 'sales'
     | 'customers'
     | 'expenses'
@@ -30,8 +31,10 @@ export type NavKey =
     | 'cash-sessions'
     | 'branches'
     | 'subscription'
+    | 'referrals'
     | 'platform_subscriptions'
     | 'platform_payment_instructions'
+    | 'platform_referrals'
     | 'settings';
 
 export type NavItem = {

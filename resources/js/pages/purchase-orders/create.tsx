@@ -1,6 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import { Plus, Trash2 } from 'lucide-react';
 import InputError from '@/components/input-error';
+import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -136,27 +137,20 @@ export default function PurchaseOrdersCreate({
                     <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                             <Label htmlFor="supplier_id">Supplier</Label>
-                            <select
+                            <SearchableSelect
                                 id="supplier_id"
                                 value={form.data.supplier_id}
-                                onChange={(event) =>
-                                    form.setData(
-                                        'supplier_id',
-                                        event.target.value,
-                                    )
+                                onChange={(value) =>
+                                    form.setData('supplier_id', value)
                                 }
-                                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                            >
-                                <option value="">Select supplier</option>
-                                {suppliers.map((supplier) => (
-                                    <option
-                                        key={supplier.id}
-                                        value={supplier.id}
-                                    >
-                                        {supplier.name}
-                                    </option>
-                                ))}
-                            </select>
+                                placeholder="Search suppliers…"
+                                searchPlaceholder="Type a supplier name…"
+                                emptyText="No suppliers match."
+                                options={suppliers.map((supplier) => ({
+                                    id: supplier.id,
+                                    label: supplier.name,
+                                }))}
+                            />
                             <InputError message={form.errors.supplier_id} />
                         </div>
                         <div className="space-y-2">
@@ -245,33 +239,28 @@ export default function PurchaseOrdersCreate({
                                         <Label htmlFor={`product-${index}`}>
                                             Product
                                         </Label>
-                                        <select
+                                        <SearchableSelect
                                             id={`product-${index}`}
                                             value={item.product_id}
-                                            onChange={(event) =>
+                                            onChange={(value) =>
                                                 updateLine(
                                                     index,
                                                     'product_id',
-                                                    event.target.value,
+                                                    value,
                                                 )
                                             }
-                                            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                                        >
-                                            <option value="">
-                                                Select product
-                                            </option>
-                                            {products.map((product) => (
-                                                <option
-                                                    key={product.id}
-                                                    value={product.id}
-                                                >
-                                                    {product.name}
-                                                    {product.sku
-                                                        ? ` (${product.sku})`
-                                                        : ''}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            placeholder="Search products…"
+                                            searchPlaceholder="Type name or SKU…"
+                                            emptyText="No products match."
+                                            options={products.map(
+                                                (product) => ({
+                                                    id: product.id,
+                                                    label: product.name,
+                                                    description:
+                                                        product.sku ?? null,
+                                                }),
+                                            )}
+                                        />
                                         <InputError
                                             message={
                                                 form.errors[

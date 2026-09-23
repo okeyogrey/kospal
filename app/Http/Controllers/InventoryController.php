@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Services\InventoryService;
 use App\Services\InventoryTimelineService;
 use App\Services\InventoryValuationService;
+use App\Support\Catalog\ProductPackResolver;
 use App\Support\Money\Money;
 use App\Support\Tenancy\ResolvesTenant;
 use App\Support\Tenancy\TenantContext;
@@ -106,8 +107,23 @@ class InventoryController extends Controller
             'products' => Product::query()
                 ->forBusiness($business)
                 ->active()
+                ->with(['activePacks:id,product_id,name,units_per_pack,barcode,selling_price,is_active'])
                 ->orderBy('name')
-                ->get(['id', 'name', 'sku', 'barcode']),
+                ->get(['id', 'name', 'sku', 'barcode', 'base_unit_name'])
+                ->map(fn (Product $product) => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'barcode' => $product->barcode,
+                    'base_unit_name' => $product->base_unit_name ?: 'piece',
+                    'packs' => $product->activePacks->map(fn ($pack) => [
+                        'id' => $pack->id,
+                        'name' => $pack->name,
+                        'units_per_pack' => $pack->units_per_pack,
+                        'barcode' => $pack->barcode,
+                    ])->values(),
+                ])
+                ->values(),
             'filters' => [
                 'search' => $search,
                 'branch_id' => $branchId,
@@ -276,6 +292,7 @@ class InventoryController extends Controller
         StoreStockReceiptRequest $request,
         TenantContext $tenant,
         InventoryService $inventory,
+        ProductPackResolver $packs,
     ): RedirectResponse {
         $business = $tenant->business();
         abort_unless($business, 403);
@@ -286,14 +303,22 @@ class InventoryController extends Controller
 
         $this->authorize('receiveStock', [InventoryBalance::class, $branch]);
 
+        $resolved = $packs->resolve(
+            business: $business,
+            product: $product,
+            quantity: (int) $data['quantity'],
+            productPackId: isset($data['product_pack_id']) ? (int) $data['product_pack_id'] : null,
+            unitCostForSelectedUnit: isset($data['unit_cost']) ? (int) $data['unit_cost'] : null,
+        );
+
         $inventory->receiveStock(
             business: $business,
             branch: $branch,
             product: $product,
-            quantity: (int) $data['quantity'],
+            quantity: $resolved['base_quantity'],
             actor: $request->user(),
             note: $data['note'] ?? null,
-            unitCost: isset($data['unit_cost']) ? (int) $data['unit_cost'] : null,
+            unitCost: $resolved['unit_cost_per_base'],
         );
 
         return back()->with('success', 'Stock received.');
@@ -303,6 +328,7 @@ class InventoryController extends Controller
         StoreStockAdjustmentRequest $request,
         TenantContext $tenant,
         InventoryService $inventory,
+        ProductPackResolver $packs,
     ): RedirectResponse {
         $business = $tenant->business();
         abort_unless($business, 403);
@@ -311,8 +337,17 @@ class InventoryController extends Controller
         $branch = Branch::query()->forBusiness($business)->whereKey($data['branch_id'])->firstOrFail();
         $product = Product::query()->forBusiness($business)->whereKey($data['product_id'])->firstOrFail();
         $reason = StockAdjustmentReason::from($data['reason']);
-        $quantity = abs((int) $data['quantity']);
-        $delta = $data['direction'] === 'increase' ? $quantity : -$quantity;
+
+        $resolved = $packs->resolve(
+            business: $business,
+            product: $product,
+            quantity: abs((int) $data['quantity']),
+            productPackId: isset($data['product_pack_id']) ? (int) $data['product_pack_id'] : null,
+        );
+
+        $delta = $data['direction'] === 'increase'
+            ? $resolved['base_quantity']
+            : -$resolved['base_quantity'];
 
         $this->authorize('adjust', [InventoryBalance::class, $branch]);
 

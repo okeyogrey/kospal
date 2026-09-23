@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Middleware\AuthenticateReferralAccount;
+use App\Http\Middleware\AuthenticateSyncDevice;
+use App\Http\Middleware\CaptureReferralCode;
 use App\Http\Middleware\EnsureBusinessMembership;
 use App\Http\Middleware\EnsurePlatformSuperAdmin;
 use App\Http\Middleware\EnsureStaffShiftActive;
@@ -18,6 +21,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
+        api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
@@ -25,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
         $middleware->web(append: [
+            CaptureReferralCode::class,
             SetLocale::class,
             HandleAppearance::class,
             ResolveTenantContext::class,
@@ -44,6 +49,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'platform' => EnsurePlatformSuperAdmin::class,
             'subscription.write' => EnsureSubscriptionAllowsWrites::class,
             'shift.active' => EnsureStaffShiftActive::class,
+            'referral.account' => AuthenticateReferralAccount::class,
+            'sync.device' => AuthenticateSyncDevice::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

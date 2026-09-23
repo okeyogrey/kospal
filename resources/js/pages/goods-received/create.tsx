@@ -1,9 +1,11 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import { Plus, Trash2 } from 'lucide-react';
 import InputError from '@/components/input-error';
+import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { fromMinor } from '@/lib/money';
 
 type Option = { id: number; name: string };
 
@@ -65,6 +67,7 @@ export default function GoodsReceivedCreate({
     defaultBranchId: number | null;
     currency: string;
 }) {
+    const emptyCost = fromMinor(0, currency);
     const initialItems: LineItem[] = selectedPurchaseOrder
         ? selectedPurchaseOrder.items
               .filter((item) => item.quantity_outstanding > 0)
@@ -72,7 +75,7 @@ export default function GoodsReceivedCreate({
                   product_id: String(item.product_id),
                   product_label: `${item.product_name ?? ''}${item.sku ? ` (${item.sku})` : ''}`,
                   quantity: String(item.quantity_outstanding),
-                  unit_cost: String(item.unit_cost),
+                  unit_cost: fromMinor(item.unit_cost, currency),
                   purchase_order_item_id: String(item.id),
               }))
         : [
@@ -80,7 +83,7 @@ export default function GoodsReceivedCreate({
                   product_id: '',
                   product_label: null,
                   quantity: '1',
-                  unit_cost: '0',
+                  unit_cost: emptyCost,
                   purchase_order_item_id: '',
               },
           ];
@@ -104,7 +107,7 @@ export default function GoodsReceivedCreate({
                 product_id: '',
                 product_label: null,
                 quantity: '1',
-                unit_cost: '0',
+                unit_cost: emptyCost,
                 purchase_order_item_id: '',
             },
         ],
@@ -113,7 +116,9 @@ export default function GoodsReceivedCreate({
     const productCost = (productId: string): string => {
         const product = products.find((p) => String(p.id) === productId);
 
-        return product?.cost_price != null ? String(product.cost_price) : '0';
+        return product?.cost_price != null
+            ? fromMinor(product.cost_price, currency)
+            : emptyCost;
     };
 
     const changePurchaseOrder = (purchaseOrderId: string) => {
@@ -132,7 +137,7 @@ export default function GoodsReceivedCreate({
                 product_id: '',
                 product_label: null,
                 quantity: '1',
-                unit_cost: '0',
+                unit_cost: emptyCost,
                 purchase_order_item_id: '',
             },
         ]);
@@ -180,8 +185,8 @@ export default function GoodsReceivedCreate({
                             Record goods received
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Unit costs are entered in {currency} minor units.
-                            Posting will update inventory.
+                            Enter unit costs in {currency}. Posting will update
+                            inventory.
                         </p>
                     </div>
                     <Button
@@ -197,27 +202,38 @@ export default function GoodsReceivedCreate({
 
                 <div className="mx-auto w-full max-w-3xl space-y-2">
                     <Label htmlFor="purchase_order_id">
-                        Link to purchase order (optional)
+                        Fill from a purchase order?
                     </Label>
-                    <select
+                    <p className="text-sm text-muted-foreground">
+                        Use this only if you already ordered this stock in
+                        Kospal. We will fill the supplier, branch, and leftover
+                        items. Leave empty if this delivery was never ordered
+                        here.
+                    </p>
+                    <SearchableSelect
                         id="purchase_order_id"
                         value={selectedPurchaseOrder?.id ?? ''}
-                        onChange={(event) =>
-                            changePurchaseOrder(event.target.value)
-                        }
-                        className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                    >
-                        <option value="">
-                            None — create from scratch
-                        </option>
-                        {purchaseOrders.map((po) => (
-                            <option key={po.id} value={po.id}>
-                                {po.reference ?? `#${po.id}`} ·{' '}
-                                {po.supplier_name} ·{' '}
-                                {po.status.replaceAll('_', ' ')}
-                            </option>
-                        ))}
-                    </select>
+                        onChange={changePurchaseOrder}
+                        placeholder="Search purchase orders…"
+                        searchPlaceholder="Type order number or supplier…"
+                        emptyText="No purchase orders match."
+                        allowEmpty
+                        emptyLabel="None — type the products yourself"
+                        options={purchaseOrders.map((po) => ({
+                            id: po.id,
+                            label: po.reference ?? `Order #${po.id}`,
+                            description: `${po.supplier_name ?? 'Supplier'} · ${po.status.replaceAll('_', ' ')}`,
+                        }))}
+                    />
+                    {selectedPurchaseOrder ? (
+                        <p className="text-sm text-muted-foreground">
+                            Filled from{' '}
+                            {selectedPurchaseOrder.reference ??
+                                `order #${selectedPurchaseOrder.id}`}
+                            . Change quantities if less arrived. You can still
+                            add extra items.
+                        </p>
+                    ) : null}
                 </div>
 
                 <form
@@ -234,7 +250,7 @@ export default function GoodsReceivedCreate({
                             items: data.items.map((item) => ({
                                 product_id: Number(item.product_id),
                                 quantity: Number(item.quantity),
-                                unit_cost: Number(item.unit_cost),
+                                unit_cost: item.unit_cost,
                                 purchase_order_item_id:
                                     item.purchase_order_item_id
                                         ? Number(item.purchase_order_item_id)
@@ -247,28 +263,21 @@ export default function GoodsReceivedCreate({
                     <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                             <Label htmlFor="supplier_id">Supplier</Label>
-                            <select
+                            <SearchableSelect
                                 id="supplier_id"
                                 value={form.data.supplier_id}
                                 disabled={!!selectedPurchaseOrder}
-                                onChange={(event) =>
-                                    form.setData(
-                                        'supplier_id',
-                                        event.target.value,
-                                    )
+                                onChange={(value) =>
+                                    form.setData('supplier_id', value)
                                 }
-                                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm disabled:opacity-60"
-                            >
-                                <option value="">Select supplier</option>
-                                {suppliers.map((supplier) => (
-                                    <option
-                                        key={supplier.id}
-                                        value={supplier.id}
-                                    >
-                                        {supplier.name}
-                                    </option>
-                                ))}
-                            </select>
+                                placeholder="Search suppliers…"
+                                searchPlaceholder="Type a supplier name…"
+                                emptyText="No suppliers match."
+                                options={suppliers.map((supplier) => ({
+                                    id: supplier.id,
+                                    label: supplier.name,
+                                }))}
+                            />
                             <InputError message={form.errors.supplier_id} />
                         </div>
                         <div className="space-y-2">
@@ -332,7 +341,7 @@ export default function GoodsReceivedCreate({
                             {form.data.items.map((item, index) => (
                                 <div
                                     key={index}
-                                    className="grid gap-2 rounded-lg border border-border/80 p-3 sm:grid-cols-[1fr_6rem_7rem_auto]"
+                                    className="grid gap-2 rounded-lg border border-border/80 p-3 sm:grid-cols-[1fr_6rem_8rem_auto]"
                                 >
                                     <div className="space-y-2">
                                         <Label htmlFor={`product-${index}`}>
@@ -343,33 +352,29 @@ export default function GoodsReceivedCreate({
                                                 {item.product_label}
                                             </p>
                                         ) : (
-                                            <select
+                                            <SearchableSelect
                                                 id={`product-${index}`}
                                                 value={item.product_id}
-                                                onChange={(event) =>
+                                                onChange={(value) =>
                                                     updateLine(
                                                         index,
                                                         'product_id',
-                                                        event.target.value,
+                                                        value,
                                                     )
                                                 }
-                                                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                                            >
-                                                <option value="">
-                                                    Select product
-                                                </option>
-                                                {products.map((product) => (
-                                                    <option
-                                                        key={product.id}
-                                                        value={product.id}
-                                                    >
-                                                        {product.name}
-                                                        {product.sku
-                                                            ? ` (${product.sku})`
-                                                            : ''}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                                placeholder="Search products…"
+                                                searchPlaceholder="Type name or SKU…"
+                                                emptyText="No products match."
+                                                options={products.map(
+                                                    (product) => ({
+                                                        id: product.id,
+                                                        label: product.name,
+                                                        description:
+                                                            product.sku ??
+                                                            null,
+                                                    }),
+                                                )}
+                                            />
                                         )}
                                         <InputError
                                             message={
@@ -406,12 +411,13 @@ export default function GoodsReceivedCreate({
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor={`unit-cost-${index}`}>
-                                            Unit cost
+                                            Unit cost ({currency})
                                         </Label>
                                         <Input
                                             id={`unit-cost-${index}`}
-                                            type="number"
+                                            inputMode="decimal"
                                             min={0}
+                                            placeholder={emptyCost}
                                             value={item.unit_cost}
                                             onChange={(event) =>
                                                 updateLine(

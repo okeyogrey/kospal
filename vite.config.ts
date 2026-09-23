@@ -6,6 +6,9 @@ import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig } from 'vite';
 
+const lanHost = process.env.KOSPAL_LAN_HOST?.trim() || undefined;
+const vitePort = Number(process.env.KOSPAL_LAN_VITE_PORT || 5173);
+
 export default defineConfig({
     plugins: [
         laravel({
@@ -32,16 +35,30 @@ export default defineConfig({
         }),
     ],
     // Prefer IPv4 so Tauri WebView2 / Windows can load HMR assets.
+    // `npm run dev:lan` sets KOSPAL_LAN_HOST so phones can load HMR (default stays localhost).
     // Ignore Rust build output — watching locked DLLs under src-tauri/target
     // crashes Vite with EBUSY on Windows during `tauri:dev`.
     server: {
-        host: '127.0.0.1',
-        port: 5173,
+        host: lanHost ? '0.0.0.0' : '127.0.0.1',
+        port: vitePort,
         strictPort: true,
-        hmr: {
-            host: '127.0.0.1',
-            port: 5173,
-        },
+        ...(lanHost
+            ? {
+                  cors: true,
+                  origin: `http://${lanHost}:${vitePort}`,
+                  allowedHosts: true,
+                  hmr: {
+                      host: lanHost,
+                      port: vitePort,
+                      clientPort: vitePort,
+                  },
+              }
+            : {
+                  hmr: {
+                      host: '127.0.0.1',
+                      port: vitePort,
+                  },
+              }),
         watch: {
             ignored: [
                 '**/src-tauri/target/**',

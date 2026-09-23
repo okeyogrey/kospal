@@ -142,6 +142,17 @@ export default function StockCountsShow({
         permissions.update &&
         (count.status === 'draft' || count.status === 'in_progress');
 
+    const nextStep =
+        count.items.length === 0
+            ? 'This count has no products. Create a new stock count after adding active products to the catalog.'
+            : count.status === 'draft'
+              ? '1. Click Start count  2. Enter what you physically counted  3. Save counts  4. Complete count'
+              : count.status === 'in_progress'
+                ? 'Enter counted quantities for each product, click Save counts, then Complete count to update inventory.'
+                : count.status === 'completed'
+                  ? 'This count is finished. Variances were posted to inventory.'
+                  : null;
+
     return (
         <>
             <Head title={count.reference ?? `Stock count #${count.id}`} />
@@ -163,6 +174,11 @@ export default function StockCountsShow({
                         <p className="text-sm text-muted-foreground">
                             {count.branch_name}
                         </p>
+                        {nextStep ? (
+                            <p className="max-w-2xl text-sm text-muted-foreground">
+                                {nextStep}
+                            </p>
+                        ) : null}
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         <Button variant="outline" asChild>
@@ -251,7 +267,24 @@ export default function StockCountsShow({
                                         Variance
                                     </span>
                                 </div>
-                                {count.items.map((item) => {
+                                {count.items.length === 0 ? (
+                                    <div className="space-y-3 px-3 py-6 text-sm">
+                                        <p className="text-muted-foreground">
+                                            No products were included. Older
+                                            counts only pulled products that
+                                            already had stock. New counts
+                                            include every active product
+                                            (system qty starts at 0 for opening
+                                            stock).
+                                        </p>
+                                        <Button variant="outline" asChild>
+                                            <Link href="/stock-counts/create">
+                                                Start a new stock count
+                                            </Link>
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    count.items.map((item) => {
                                     const varianceValue = editable
                                         ? variance(item)
                                         : item.variance ?? 0;
@@ -317,7 +350,8 @@ export default function StockCountsShow({
                                             </span>
                                         </div>
                                     );
-                                })}
+                                })
+                                )}
                             </div>
                         </section>
 

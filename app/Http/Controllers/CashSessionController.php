@@ -109,7 +109,7 @@ class CashSessionController extends Controller
 
         $cashSession->load([
             'user:id,name,email',
-            'branch:id,name',
+            'branch:id,business_id,name',
             'closedByUser:id,name',
             'varianceApprover:id,name',
             'staffShift',
@@ -122,16 +122,18 @@ class CashSessionController extends Controller
             ? $cash->liveSummary($cashSession)
             : ($cashSession->z_report_snapshot ?? []);
 
+        $permissions = [
+            'record_movement' => $tenant->user()?->can('recordMovement', $cashSession) ?? false,
+            'close' => $tenant->user()?->can('close', $cashSession) ?? false,
+            'force_close' => $tenant->user()?->can('forceClose', $cashSession) ?? false,
+        ];
+
         return Inertia::render('cash-sessions/show', [
             'session' => $this->detailPayload($cashSession, $currency, $timezone),
             'summary' => $summary,
             'timezone' => $timezone,
             'currency' => $currency,
-            'permissions' => [
-                'record_movement' => $tenant->user()?->can('recordMovement', $cashSession) ?? false,
-                'close' => $tenant->user()?->can('close', $cashSession) ?? false,
-                'force_close' => $tenant->user()?->can('forceClose', $cashSession) ?? false,
-            ],
+            'permissions' => $permissions,
         ]);
     }
 

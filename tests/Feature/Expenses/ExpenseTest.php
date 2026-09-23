@@ -141,6 +141,7 @@ it('allows cashiers to log expenses when owner enables the setting', function ()
     $this->actingAs($owner)
         ->patch(route('staff.settings.update'), [
             'cashiers_can_log_expenses' => true,
+            'cashiers_can_approve_price_overrides' => false,
         ])
         ->assertRedirect();
 

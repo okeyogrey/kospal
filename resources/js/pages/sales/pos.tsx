@@ -1,13 +1,22 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { Minus, Pause, Play, Plus, Search, Split, Trash2, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Minus, Pause, Pencil, Play, Plus, Search, ShoppingCart, Split, Trash2, X } from 'lucide-react';
+import {
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    useSyncExternalStore,
+    type PointerEvent as ReactPointerEvent,
+} from 'react';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslations } from '@/hooks/use-translations';
+import { useVirtualKeyboard } from '@/hooks/use-virtual-keyboard';
 import { formatMoney, fromMinor, toMinor } from '@/lib/money';
+import { cn } from '@/lib/utils';
 import { store as storeCustomer } from '@/routes/customers';
 import {
     hold as holdSale,
@@ -23,11 +32,21 @@ type BranchOption = { id: number; name: string };
 type CustomerOption = { id: number; name: string; phone?: string | null };
 type PaymentOption = { value: string; label: string };
 
+type PosPack = {
+    id: number;
+    name: string;
+    units_per_pack: number;
+    barcode?: string | null;
+    selling_price_minor: number;
+    selling_price_formatted: string;
+};
+
 type PosProduct = {
     id: number;
     name: string;
     sku: string;
     barcode: string | null;
+    base_unit_name?: string;
     quantity: number;
     selling_price_minor: number;
     cost_price_minor?: number;
@@ -35,10 +54,15 @@ type PosProduct = {
     is_negotiable: boolean;
     selling_price_formatted: string;
     min_selling_price_formatted?: string;
+    packs?: PosPack[];
 };
 
 type CartLine = {
+    key: string;
     product_id: number;
+    product_pack_id: number | null;
+    pack_name: string | null;
+    units_per_pack: number;
     name: string;
     sku: string;
     quantity: number;
@@ -87,6 +111,23 @@ function csrfToken(): string | undefined {
     );
 }
 
+const COMPACT_TILL_QUERY = '(max-width: 1023px)';
+
+function subscribeCompactTill(onStoreChange: () => void) {
+    const media = window.matchMedia(COMPACT_TILL_QUERY);
+    media.addEventListener('change', onStoreChange);
+
+    return () => media.removeEventListener('change', onStoreChange);
+}
+
+function useCompactTill(): boolean {
+    return useSyncExternalStore(
+        subscribeCompactTill,
+        () => window.matchMedia(COMPACT_TILL_QUERY).matches,
+        () => false,
+    );
+}
+
 export default function SalesPos({
     branches,
     activeBranchId,
@@ -118,6 +159,7 @@ export default function SalesPos({
         | { success?: string | null; error?: string | null }
         | undefined;
     const scanRef = useRef<HTMLInputElement>(null);
+    const skipCatalogClickRef = useRef(false);
     const [branchId, setBranchId] = useState(String(activeBranchId));
     const [products, setProducts] = useState(initialProducts);
     const [heldSales, setHeldSales] = useState(initialHeldSales);
@@ -127,18 +169,20 @@ export default function SalesPos({
     const [scanBusy, setScanBusy] = useState(false);
     const [scanMessage, setScanMessage] = useState<string | null>(null);
     const [cart, setCart] = useState<CartLine[]>([]);
-    const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
+    const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
     const [priceDraft, setPriceDraft] = useState('');
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [approvalOpen, setApprovalOpen] = useState(false);
     const [pendingAction, setPendingAction] = useState<'sale' | 'hold'>('sale');
     const [heldOpen, setHeldOpen] = useState(false);
+    const [mobileCartOpen, setMobileCartOpen] = useState(false);
+    const [searchFocused, setSearchFocused] = useState(false);
+    const compactTill = useCompactTill();
+    const keyboard = useVirtualKeyboard();
     const [splitMode, setSplitMode] = useState(false);
     const [heldSaleId, setHeldSaleId] = useState<number | null>(null);
     const [heldLabel, setHeldLabel] = useState('');
     const [cashTendered, setCashTendered] = useState('');
-    const [managerLogin, setManagerLogin] = useState('');
-    const [managerPassword, setManagerPassword] = useState('');
     const [managerPin, setManagerPin] = useState('');
     const [customerMode, setCustomerMode] = useState<'walkin' | 'saved'>(
         'walkin',
@@ -168,8 +212,6 @@ export default function SalesPos({
         change_given: '',
         manager_approval: null as {
             pin: string;
-            login: string;
-            password: string;
         } | null,
         payments: [] as Array<{
             method: string;
@@ -194,9 +236,31 @@ export default function SalesPos({
         setHeldSaleId(null);
         form.setData('client_request_id', newRequestId());
         form.clearErrors();
-        scanRef.current?.focus();
+        if (!window.matchMedia(COMPACT_TILL_QUERY).matches) {
+            scanRef.current?.focus();
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps -- reset cart when server branch stock reloads
     }, [activeBranchId, initialProducts, initialHeldSales]);
+
+    useEffect(() => {
+        const syncSearchFocus = () => {
+            window.requestAnimationFrame(() => {
+                const active = document.activeElement;
+                setSearchFocused(
+                    active instanceof HTMLElement &&
+                        active.id === 'pos_search',
+                );
+            });
+        };
+
+        document.addEventListener('focusin', syncSearchFocus);
+        document.addEventListener('focusout', syncSearchFocus);
+
+        return () => {
+            document.removeEventListener('focusin', syncSearchFocus);
+            document.removeEventListener('focusout', syncSearchFocus);
+        };
+    }, []);
 
     useEffect(() => {
         const timer = window.setTimeout(async () => {
@@ -273,6 +337,19 @@ export default function SalesPos({
         return Math.max(line.min_selling_price_minor, floor);
     };
 
+    const canNegotiateLine = (line: CartLine): boolean =>
+        permissions.negotiate &&
+        (line.is_negotiable || permissions.approve_self);
+
+    const startPriceEdit = (line: CartLine) => {
+        if (!canNegotiateLine(line)) {
+            return;
+        }
+
+        setEditingPriceId(line.key);
+        setPriceDraft(fromMinor(line.unit_price_minor, currency));
+    };
+
     const hasPriceBelowPermission = cart.some(
         (line) => line.unit_price_minor < permissionFloorFor(line),
     );
@@ -321,18 +398,28 @@ export default function SalesPos({
         );
     };
 
-    const addProduct = (product: PosProduct) => {
-        if (product.quantity < 1) {
+    const addProduct = (
+        product: PosProduct,
+        pack: PosPack | null = null,
+    ) => {
+        const units = pack?.units_per_pack ?? 1;
+        const maxPackQty = Math.floor(product.quantity / units);
+
+        if (maxPackQty < 1) {
             setScanMessage(
                 t('pages.pos.out_of_stock', 'No stock available for this item.'),
             );
             return;
         }
 
+        const lineKey = `${product.id}:${pack?.id ?? 0}`;
+        const listPrice =
+            pack?.selling_price_minor ?? product.selling_price_minor;
+        const minPrice =
+            (product.min_selling_price_minor ?? 0) * units;
+
         setCart((current) => {
-            const existing = current.find(
-                (line) => line.product_id === product.id,
-            );
+            const existing = current.find((line) => line.key === lineKey);
 
             if (existing) {
                 if (existing.quantity >= existing.max_quantity) {
@@ -340,7 +427,7 @@ export default function SalesPos({
                 }
 
                 return current.map((line) =>
-                    line.product_id === product.id
+                    line.key === lineKey
                         ? { ...line, quantity: line.quantity + 1 }
                         : line,
                 );
@@ -349,20 +436,61 @@ export default function SalesPos({
             return [
                 ...current,
                 {
+                    key: lineKey,
                     product_id: product.id,
+                    product_pack_id: pack?.id ?? null,
+                    pack_name: pack?.name ?? null,
+                    units_per_pack: units,
                     name: product.name,
                     sku: product.sku,
                     quantity: 1,
-                    max_quantity: product.quantity,
-                    unit_price_minor: product.selling_price_minor,
-                    list_unit_price_minor: product.selling_price_minor,
-                    min_selling_price_minor:
-                        product.min_selling_price_minor ?? 0,
+                    max_quantity: maxPackQty,
+                    unit_price_minor: listPrice,
+                    list_unit_price_minor: listPrice,
+                    min_selling_price_minor: minPrice,
                     is_negotiable: product.is_negotiable ?? true,
                 },
             ];
         });
         setScanMessage(null);
+    };
+
+    const addCatalogProduct = (
+        product: PosProduct,
+        pack: PosPack | null = null,
+        keepScanFocus = !compactTill,
+    ) => {
+        addProduct(product, pack);
+
+        if (keepScanFocus) {
+            scanRef.current?.focus();
+        } else {
+            scanRef.current?.blur();
+        }
+    };
+
+    const handleCatalogPointerDown = (
+        event: ReactPointerEvent<HTMLButtonElement>,
+        product: PosProduct,
+        pack: PosPack | null = null,
+    ) => {
+        if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
+            return;
+        }
+
+        event.preventDefault();
+        skipCatalogClickRef.current = true;
+        addProduct(product, pack);
+    };
+
+    const blurScanAfterTouch = (
+        event: ReactPointerEvent<HTMLButtonElement>,
+    ) => {
+        if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
+            return;
+        }
+
+        window.setTimeout(() => scanRef.current?.blur(), 50);
     };
 
     const handleScanSubmit = async () => {
@@ -376,6 +504,20 @@ export default function SalesPos({
         setScanMessage(null);
 
         try {
+            const localPack = products
+                .flatMap((product) =>
+                    (product.packs ?? []).map((pack) => ({ product, pack })),
+                )
+                .find(({ pack }) => pack.barcode === code);
+
+            if (localPack) {
+                addProduct(localPack.product, localPack.pack);
+                setSearch('');
+                setProducts(initialProducts);
+                requestAnimationFrame(() => scanRef.current?.focus());
+                return;
+            }
+
             const local = products.find(
                 (product) =>
                     product.barcode === code ||
@@ -422,8 +564,15 @@ export default function SalesPos({
                 return;
             }
 
-            const payload = (await response.json()) as { product: PosProduct };
-            addProduct(payload.product);
+            const payload = (await response.json()) as {
+                product: PosProduct;
+                product_pack_id?: number | null;
+            };
+            const pack =
+                payload.product.packs?.find(
+                    (entry) => entry.id === payload.product_pack_id,
+                ) ?? null;
+            addProduct(payload.product, pack);
             setSearch('');
             setProducts(initialProducts);
             requestAnimationFrame(() => scanRef.current?.focus());
@@ -432,11 +581,11 @@ export default function SalesPos({
         }
     };
 
-    const updateQuantity = (productId: number, quantity: number) => {
+    const updateQuantity = (lineKey: string, quantity: number) => {
         setCart((current) =>
             current
                 .map((line) => {
-                    if (line.product_id !== productId) {
+                    if (line.key !== lineKey) {
                         return line;
                     }
 
@@ -451,12 +600,12 @@ export default function SalesPos({
         );
     };
 
-    const applyNegotiatedPrice = (productId: number) => {
+    const applyNegotiatedPrice = (lineKey: string) => {
         if (!permissions.negotiate) {
             return;
         }
 
-        const line = cart.find((entry) => entry.product_id === productId);
+        const line = cart.find((entry) => entry.key === lineKey);
 
         if (!line || (!line.is_negotiable && !permissions.approve_self)) {
             setEditingPriceId(null);
@@ -470,7 +619,7 @@ export default function SalesPos({
         );
         setCart((current) =>
             current.map((entry) =>
-                entry.product_id === productId
+                entry.key === lineKey
                     ? { ...entry, unit_price_minor: next }
                     : entry,
             ),
@@ -583,13 +732,12 @@ export default function SalesPos({
                 withApproval && needsApproval
                     ? {
                           pin: managerPin,
-                          login: managerLogin,
-                          password: managerPassword,
                       }
                     : null,
             payments: paymentRows,
             items: cart.map((line) => ({
                 product_id: line.product_id,
+                product_pack_id: line.product_pack_id,
                 quantity: line.quantity,
                 unit_price: fromMinor(line.unit_price_minor, currency),
                 list_unit_price: fromMinor(line.list_unit_price_minor, currency),
@@ -600,12 +748,11 @@ export default function SalesPos({
     const resetAfterSale = () => {
         setConfirmOpen(false);
         setApprovalOpen(false);
+        setMobileCartOpen(false);
         setCart([]);
         setHeldSaleId(null);
         setHeldLabel('');
         setCashTendered('');
-        setManagerLogin('');
-        setManagerPassword('');
         setManagerPin('');
         setSplitMode(false);
         setPayments([
@@ -706,6 +853,9 @@ export default function SalesPos({
             sale: HeldSale & {
                 items: Array<{
                     product_id: number;
+                    product_pack_id?: number | null;
+                    pack_name?: string | null;
+                    units_per_pack?: number;
                     name: string;
                     sku: string;
                     quantity: number;
@@ -723,17 +873,26 @@ export default function SalesPos({
         };
 
         setCart(
-            payload.sale.items.map((item) => ({
-                product_id: item.product_id,
-                name: item.name,
-                sku: item.sku,
-                quantity: item.quantity,
-                max_quantity: item.max_quantity,
-                unit_price_minor: item.unit_price_minor,
-                list_unit_price_minor: item.list_unit_price_minor,
-                min_selling_price_minor: item.min_selling_price_minor ?? 0,
-                is_negotiable: item.is_negotiable ?? true,
-            })),
+            payload.sale.items.map((item) => {
+                const packId = item.product_pack_id ?? null;
+                const units = item.units_per_pack ?? 1;
+
+                return {
+                    key: `${item.product_id}:${packId ?? 0}`,
+                    product_id: item.product_id,
+                    product_pack_id: packId,
+                    pack_name: item.pack_name ?? null,
+                    units_per_pack: units,
+                    name: item.name,
+                    sku: item.sku,
+                    quantity: item.quantity,
+                    max_quantity: item.max_quantity,
+                    unit_price_minor: item.unit_price_minor,
+                    list_unit_price_minor: item.list_unit_price_minor,
+                    min_selling_price_minor: item.min_selling_price_minor ?? 0,
+                    is_negotiable: item.is_negotiable ?? true,
+                };
+            }),
         );
         setHeldSaleId(payload.sale.id);
         setHeldLabel(payload.sale.held_label ?? '');
@@ -768,16 +927,48 @@ export default function SalesPos({
         });
     };
 
+    const openConfirmSale = () => {
+        if (cart.length === 0 || form.processing) {
+            return;
+        }
+
+        if (cashShareMinor > 0 && cashTenderedMinor < cashShareMinor) {
+            setMobileCartOpen(true);
+            form.setError(
+                'cash_tendered',
+                t(
+                    'pages.pos.cash_short',
+                    'Cash tendered must cover the cash portion.',
+                ),
+            );
+            return;
+        }
+
+        setMobileCartOpen(false);
+        setConfirmOpen(true);
+    };
+
+    const hideMobileDock =
+        !mobileCartOpen && (searchFocused || keyboard.isOpen);
+
     return (
         <>
             <Head title={t('pages.pos.title', 'Point of sale')} />
-            <div className="flex h-full flex-1 flex-col gap-4 p-3 md:p-4 lg:p-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                        <h1 className="font-display text-2xl font-semibold">
+            <div className="group/pos flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden touch-manipulation">
+                <div
+                    className={cn(
+                        'flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 lg:gap-4 lg:p-4 xl:p-6',
+                        hideMobileDock
+                            ? 'max-lg:pb-[max(0.75rem,var(--keyboard-inset,0px))] lg:pb-4'
+                            : 'pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-4',
+                    )}
+                >
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+                    <div className="min-w-0">
+                        <h1 className="font-display text-xl font-semibold lg:text-2xl">
                             {t('pages.pos.title', 'Point of sale')}
                         </h1>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="hidden text-sm text-muted-foreground sm:block">
                             {t(
                                 'pages.pos.description',
                                 'Scan products, tender payment, and finish without leaving the cart.',
@@ -788,7 +979,7 @@ export default function SalesPos({
                         <Button
                             type="button"
                             variant="outline"
-                            className="rounded-xl"
+                            className="h-11 min-h-11 rounded-xl"
                             onClick={() => setHeldOpen(true)}
                         >
                             <Play className="size-4" />
@@ -799,28 +990,33 @@ export default function SalesPos({
                                 </Badge>
                             ) : null}
                         </Button>
-                        <Button variant="outline" asChild className="rounded-xl">
+                        <Button variant="outline" asChild className="h-11 min-h-11 rounded-xl">
                             <Link href={salesIndex()}>
-                                {t('pages.pos.history', 'Sales history')}
+                                <span className="sm:hidden">
+                                    {t('pages.pos.history_short', 'Sales')}
+                                </span>
+                                <span className="hidden sm:inline">
+                                    {t('pages.pos.history', 'Sales history')}
+                                </span>
                             </Link>
                         </Button>
                     </div>
                 </div>
 
                 {flash?.success ? (
-                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200">
+                    <div className="shrink-0 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-wrap text-emerald-800 dark:text-emerald-200">
                         {flash.success}
                     </div>
                 ) : null}
 
                 {Object.keys(form.errors).length > 0 ? (
-                    <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    <div className="shrink-0 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-wrap text-destructive">
                         {Object.values(form.errors)[0]}
                     </div>
                 ) : null}
 
-                <div className="grid flex-1 gap-4 xl:grid-cols-[1.4fr_1fr]">
-                    <section className="flex min-h-[28rem] flex-col gap-3 rounded-2xl border border-border/80 bg-card/70 p-3 md:p-4">
+                <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(20rem,1fr)] lg:overflow-hidden">
+                    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-2xl border border-border/80 bg-card/70 p-3 md:p-4 lg:h-full">
                         <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
                             <div className="space-y-1.5">
                                 <Label htmlFor="pos_branch">
@@ -866,13 +1062,15 @@ export default function SalesPos({
                                         onChange={(event) =>
                                             setSearch(event.target.value)
                                         }
+                                        onFocus={() => setSearchFocused(true)}
+                                        onBlur={() => setSearchFocused(false)}
                                         placeholder={t(
                                             'pages.pos.search_placeholder',
                                             'Scan or type, then Enter…',
                                         )}
-                                        className="h-12 rounded-xl pl-10 text-base"
-                                        autoFocus
+                                        className="h-12 min-h-12 scroll-mb-28 rounded-xl pl-10 text-base"
                                         autoComplete="off"
+                                        enterKeyHint="go"
                                     />
                                 </form>
                                 {scanMessage ? (
@@ -880,7 +1078,7 @@ export default function SalesPos({
                                         {scanMessage}
                                     </p>
                                 ) : (
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="hidden text-xs text-muted-foreground sm:block">
                                         {t(
                                             'pages.pos.scan_hint',
                                             'Enter adds the barcode immediately and keeps the scanner ready.',
@@ -905,45 +1103,139 @@ export default function SalesPos({
                             ) : (
                                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                                     {products.map((product) => (
-                                        <button
+                                        <div
                                             key={product.id}
-                                            type="button"
-                                            onClick={() => {
-                                                addProduct(product);
-                                                scanRef.current?.focus();
-                                            }}
-                                            disabled={product.quantity < 1}
-                                            className="rounded-2xl border border-border/80 bg-background p-4 text-left transition hover:border-primary/50 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
+                                            className="min-w-0 rounded-2xl border border-border/80 bg-background p-3 text-left transition hover:border-primary/50 hover:bg-accent/40 md:p-4"
                                         >
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div>
-                                                    <div className="font-medium">
-                                                        {product.name}
+                                            <button
+                                                type="button"
+                                                onPointerDown={(event) =>
+                                                    handleCatalogPointerDown(
+                                                        event,
+                                                        product,
+                                                    )
+                                                }
+                                                onPointerUp={blurScanAfterTouch}
+                                                onClick={() => {
+                                                    if (skipCatalogClickRef.current) {
+                                                        skipCatalogClickRef.current = false;
+                                                        return;
+                                                    }
+
+                                                    addCatalogProduct(product);
+                                                }}
+                                                disabled={product.quantity < 1}
+                                                className="min-h-11 w-full touch-manipulation text-left disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <div className="font-medium">
+                                                            {product.name}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            {product.sku}
+                                                            {product.barcode
+                                                                ? ` · ${product.barcode}`
+                                                                : ''}
+                                                            {product.base_unit_name
+                                                                ? ` · ${product.base_unit_name}`
+                                                                : ''}
+                                                        </div>
                                                     </div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {product.sku}
-                                                        {product.barcode
-                                                            ? ` · ${product.barcode}`
-                                                            : ''}
-                                                    </div>
+                                                    <Badge variant="secondary">
+                                                        {product.quantity}
+                                                    </Badge>
                                                 </div>
-                                                <Badge variant="secondary">
-                                                    {product.quantity}
-                                                </Badge>
-                                            </div>
-                                            <div className="mt-3 text-lg font-semibold">
-                                                {product.selling_price_formatted}
-                                            </div>
-                                        </button>
+                                                <div className="mt-3 flex items-end justify-between gap-2">
+                                                    <div className="text-lg font-semibold">
+                                                        {
+                                                            product.selling_price_formatted
+                                                        }
+                                                    </div>
+                                                    {permissions.negotiate &&
+                                                    product.is_negotiable ? (
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="text-[10px] font-medium"
+                                                        >
+                                                            {t(
+                                                                'pages.pos.negotiable',
+                                                                'Negotiable',
+                                                            )}
+                                                        </Badge>
+                                                    ) : null}
+                                                </div>
+                                            </button>
+                                            {(product.packs?.length ?? 0) >
+                                            0 ? (
+                                                <div className="mt-3 flex flex-wrap gap-1">
+                                                    {product.packs?.map(
+                                                        (pack) => (
+                                                            <Button
+                                                                key={pack.id}
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="h-11 min-h-11 rounded-lg px-3"
+                                                                disabled={
+                                                                    Math.floor(
+                                                                        product.quantity /
+                                                                            pack.units_per_pack,
+                                                                    ) < 1
+                                                                }
+                                                                onPointerDown={(
+                                                                    event,
+                                                                ) =>
+                                                                    handleCatalogPointerDown(
+                                                                        event,
+                                                                        product,
+                                                                        pack,
+                                                                    )
+                                                                }
+                                                                onPointerUp={
+                                                                    blurScanAfterTouch
+                                                                }
+                                                                onClick={() => {
+                                                                    if (
+                                                                        skipCatalogClickRef.current
+                                                                    ) {
+                                                                        skipCatalogClickRef.current = false;
+                                                                        return;
+                                                                    }
+
+                                                                    addCatalogProduct(
+                                                                        product,
+                                                                        pack,
+                                                                    );
+                                                                }}
+                                                            >
+                                                                + {pack.name}
+                                                            </Button>
+                                                        ),
+                                                    )}
+                                                </div>
+                                            ) : null}
+                                        </div>
                                     ))}
                                 </div>
                             )}
                         </div>
                     </section>
 
-                    <section className="flex min-h-[28rem] flex-col gap-4 rounded-2xl border border-border/80 bg-card/70 p-3 md:p-4">
-                        <div className="flex items-start justify-between gap-2">
-                            <div>
+                    <section
+                        className={cn(
+                            'flex min-h-0 flex-col gap-4 rounded-2xl border border-border/80 bg-card p-3 md:p-4',
+                            'max-lg:fixed max-lg:inset-x-0 max-lg:z-40 max-lg:rounded-b-none max-lg:shadow-2xl max-lg:transition-[transform,bottom,max-height] max-lg:duration-200',
+                            'max-lg:bottom-[var(--keyboard-inset,0px)] max-lg:max-h-[min(42rem,calc(var(--vv-height,100dvh)-0.5rem))]',
+                            mobileCartOpen
+                                ? 'max-lg:translate-y-0'
+                                : 'max-lg:pointer-events-none max-lg:translate-y-full',
+                            'overflow-hidden overscroll-y-contain max-lg:overflow-y-auto lg:relative lg:h-full lg:max-h-none lg:translate-y-0 lg:pointer-events-auto lg:shadow-none lg:bottom-auto',
+                        )}
+                        aria-hidden={compactTill && !mobileCartOpen}
+                    >
+                        <div className="flex shrink-0 items-start justify-between gap-2">
+                            <div className="min-w-0">
                                 <h2 className="font-display text-lg font-semibold">
                                     {t('pages.pos.cart', 'Cart')}
                                     {heldSaleId ? (
@@ -952,16 +1244,32 @@ export default function SalesPos({
                                         </Badge>
                                     ) : null}
                                 </h2>
-                                <p className="text-sm text-muted-foreground">
-                                    {t(
-                                        'pages.pos.cart_hint',
-                                        'Tap a line price to negotiate. Scanning stays focused.',
-                                    )}
+                                <p className="hidden text-sm text-muted-foreground lg:block">
+                                    {permissions.negotiate
+                                        ? t(
+                                              'pages.pos.cart_hint',
+                                              'Use Edit price on a line when the customer negotiates.',
+                                          )
+                                        : t(
+                                              'pages.pos.cart_hint_scan',
+                                              'Scanning stays focused on the search box.',
+                                          )}
                                 </p>
                             </div>
+                            <button
+                                type="button"
+                                className="flex size-11 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted lg:hidden"
+                                onClick={() => setMobileCartOpen(false)}
+                                aria-label={t(
+                                    'pages.pos.close_cart',
+                                    'Close cart',
+                                )}
+                            >
+                                <X className="size-4" />
+                            </button>
                         </div>
 
-                        <div className="min-h-0 flex-1 space-y-2 overflow-auto">
+                        <div className="min-h-[11rem] flex-1 space-y-2 overflow-y-auto">
                             {cart.length === 0 ? (
                                 <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
                                     {t(
@@ -972,25 +1280,31 @@ export default function SalesPos({
                             ) : (
                                 cart.map((line) => (
                                     <div
-                                        key={line.product_id}
+                                        key={line.key}
                                         className="rounded-xl border border-border/70 bg-background p-3"
                                     >
                                         <div className="flex items-start justify-between gap-2">
                                             <div>
                                                 <div className="font-medium">
                                                     {line.name}
+                                                    {line.pack_name
+                                                        ? ` · ${line.pack_name}`
+                                                        : ''}
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">
-                                                    {line.sku} · max{' '}
-                                                    {line.max_quantity}
+                                                    {line.sku}
+                                                    {line.units_per_pack > 1
+                                                        ? ` · ${line.units_per_pack} ${t('pages.pos.per_pack', 'per pack')}`
+                                                        : ''}{' '}
+                                                    · max {line.max_quantity}
                                                 </div>
                                             </div>
                                             <button
                                                 type="button"
-                                                className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                                className="flex size-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                                                 onClick={() =>
                                                     updateQuantity(
-                                                        line.product_id,
+                                                        line.key,
                                                         0,
                                                     )
                                                 }
@@ -999,16 +1313,16 @@ export default function SalesPos({
                                                 <Trash2 className="size-4" />
                                             </button>
                                         </div>
-                                        <div className="mt-3 flex items-center justify-between gap-3">
+                                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                                             <div className="flex items-center gap-2">
                                                 <Button
                                                     type="button"
                                                     size="icon"
                                                     variant="outline"
-                                                    className="size-11 rounded-xl"
+                                                    className="size-11 min-h-11 min-w-11 rounded-xl"
                                                     onClick={() =>
                                                         updateQuantity(
-                                                            line.product_id,
+                                                            line.key,
                                                             line.quantity - 1,
                                                         )
                                                     }
@@ -1020,29 +1334,31 @@ export default function SalesPos({
                                                     min={1}
                                                     max={line.max_quantity}
                                                     value={line.quantity}
+                                                    inputMode="numeric"
+                                                    enterKeyHint="done"
                                                     onChange={(event) =>
                                                         updateQuantity(
-                                                            line.product_id,
+                                                            line.key,
                                                             Number(
                                                                 event.target
                                                                     .value || 0,
                                                             ),
                                                         )
                                                     }
-                                                    className="h-11 w-16 rounded-xl text-center text-base"
+                                                    className="h-11 min-h-11 w-16 scroll-mb-28 rounded-xl text-center text-base"
                                                 />
                                                 <Button
                                                     type="button"
                                                     size="icon"
                                                     variant="outline"
-                                                    className="size-11 rounded-xl"
+                                                    className="size-11 min-h-11 min-w-11 rounded-xl"
                                                     disabled={
                                                         line.quantity >=
                                                         line.max_quantity
                                                     }
                                                     onClick={() =>
                                                         updateQuantity(
-                                                            line.product_id,
+                                                            line.key,
                                                             line.quantity + 1,
                                                         )
                                                     }
@@ -1051,99 +1367,150 @@ export default function SalesPos({
                                                 </Button>
                                             </div>
                                             <div className="text-right">
-                                                {permissions.negotiate &&
-                                                (line.is_negotiable ||
-                                                    permissions.approve_self) &&
+                                                {canNegotiateLine(line) &&
                                                 editingPriceId ===
-                                                    line.product_id ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <Input
-                                                            value={priceDraft}
-                                                            onChange={(event) =>
-                                                                setPriceDraft(
-                                                                    event.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            onKeyDown={(
-                                                                event,
-                                                            ) => {
-                                                                if (
-                                                                    event.key ===
-                                                                    'Enter'
-                                                                ) {
-                                                                    applyNegotiatedPrice(
-                                                                        line.product_id,
-                                                                    );
+                                                    line.key ? (
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {t(
+                                                                'pages.pos.unit_price',
+                                                                'Unit price',
+                                                            )}
+                                                        </p>
+                                                        <div className="flex flex-wrap items-center justify-end gap-1">
+                                                            <Input
+                                                                value={
+                                                                    priceDraft
                                                                 }
-                                                            }}
-                                                            className="h-9 w-24 rounded-lg text-right"
-                                                            autoFocus
-                                                        />
-                                                        <Button
-                                                            type="button"
-                                                            size="sm"
-                                                            className="h-9 rounded-lg"
-                                                            onClick={() =>
-                                                                applyNegotiatedPrice(
-                                                                    line.product_id,
-                                                                )
-                                                            }
-                                                        >
-                                                            OK
-                                                        </Button>
+                                                                onChange={(
+                                                                    event,
+                                                                ) =>
+                                                                    setPriceDraft(
+                                                                        event
+                                                                            .target
+                                                                            .value,
+                                                                    )
+                                                                }
+                                                                onKeyDown={(
+                                                                    event,
+                                                                ) => {
+                                                                    if (
+                                                                        event.key ===
+                                                                        'Enter'
+                                                                    ) {
+                                                                        applyNegotiatedPrice(
+                                                                            line.key,
+                                                                        );
+                                                                    }
+                                                                    if (
+                                                                        event.key ===
+                                                                        'Escape'
+                                                                    ) {
+                                                                        setEditingPriceId(
+                                                                            null,
+                                                                        );
+                                                                    }
+                                                                }}
+                                                                className="h-11 min-h-11 w-28 scroll-mb-28 rounded-lg text-right text-base"
+                                                                autoFocus
+                                                                aria-label={t(
+                                                                    'pages.pos.negotiate_price',
+                                                                    'Edit line price',
+                                                                )}
+                                                            />
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                className="h-11 min-h-11 rounded-lg px-3"
+                                                                onClick={() =>
+                                                                    applyNegotiatedPrice(
+                                                                        line.key,
+                                                                    )
+                                                                }
+                                                            >
+                                                                OK
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="size-11 min-h-11 rounded-lg"
+                                                                onClick={() =>
+                                                                    setEditingPriceId(
+                                                                        null,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <X className="size-4" />
+                                                            </Button>
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {t(
+                                                                'pages.pos.min_price',
+                                                                'Min',
+                                                            )}{' '}
+                                                            {formatMoney(
+                                                                line.min_selling_price_minor,
+                                                                currency,
+                                                                locale,
+                                                            )}
+                                                        </p>
                                                     </div>
                                                 ) : (
                                                     <button
                                                         type="button"
-                                                        className="font-semibold hover:text-primary disabled:cursor-default disabled:hover:text-inherit"
                                                         disabled={
-                                                            !permissions.negotiate ||
-                                                            (!line.is_negotiable &&
-                                                                !permissions.approve_self)
+                                                            !canNegotiateLine(
+                                                                line,
+                                                            )
                                                         }
-                                                        onClick={() => {
-                                                            if (
-                                                                !permissions.negotiate ||
-                                                                (!line.is_negotiable &&
-                                                                    !permissions.approve_self)
-                                                            ) {
-                                                                return;
-                                                            }
-                                                            setEditingPriceId(
-                                                                line.product_id,
-                                                            );
-                                                            setPriceDraft(
-                                                                fromMinor(
-                                                                    line.unit_price_minor,
-                                                                    currency,
-                                                                ),
-                                                            );
-                                                        }}
-                                                        title={
-                                                            line.is_negotiable ||
-                                                            permissions.approve_self
+                                                        onClick={() =>
+                                                            startPriceEdit(
+                                                                line,
+                                                            )
+                                                        }
+                                                        className={cn(
+                                                            'rounded-lg px-2 py-1.5 text-right disabled:cursor-default',
+                                                            canNegotiateLine(
+                                                                line,
+                                                            ) &&
+                                                                'hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50',
+                                                        )}
+                                                        aria-label={
+                                                            canNegotiateLine(
+                                                                line,
+                                                            )
                                                                 ? t(
                                                                       'pages.pos.negotiate_price',
                                                                       'Edit line price',
                                                                   )
-                                                                : t(
-                                                                      'pages.pos.not_negotiable',
-                                                                      'Not negotiable',
-                                                                  )
+                                                                : undefined
                                                         }
                                                     >
-                                                        {formatMoney(
-                                                            line.unit_price_minor *
-                                                                line.quantity,
-                                                            currency,
-                                                            locale,
-                                                        )}
+                                                        <p className="font-semibold tabular-nums">
+                                                            {formatMoney(
+                                                                line.unit_price_minor *
+                                                                    line.quantity,
+                                                                currency,
+                                                                locale,
+                                                            )}
+                                                        </p>
+                                                        {canNegotiateLine(
+                                                            line,
+                                                        ) ? (
+                                                            <p className="mt-0.5 flex items-center justify-end gap-1 text-xs text-muted-foreground">
+                                                                <Pencil className="size-3" />
+                                                                {t(
+                                                                    'pages.pos.negotiable',
+                                                                    'Negotiable',
+                                                                )}
+                                                            </p>
+                                                        ) : null}
                                                     </button>
                                                 )}
                                                 {line.unit_price_minor !==
                                                 line.list_unit_price_minor ? (
-                                                    <div className="text-xs text-amber-700 dark:text-amber-300">
+                                                    <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
                                                         {t(
                                                             'pages.pos.list_price',
                                                             'List',
@@ -1152,6 +1519,11 @@ export default function SalesPos({
                                                             line.list_unit_price_minor,
                                                             currency,
                                                             locale,
+                                                        )}
+                                                        {' · '}
+                                                        {t(
+                                                            'pages.pos.negotiated',
+                                                            'Negotiated',
                                                         )}
                                                     </div>
                                                 ) : null}
@@ -1162,7 +1534,7 @@ export default function SalesPos({
                             )}
                         </div>
 
-                        <div className="space-y-3 border-t border-border/70 pt-3">
+                        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto border-t border-border/70 pt-3">
                             <div className="grid gap-2">
                                 <Label>
                                     {t('pages.pos.customer', 'Customer')}
@@ -1211,7 +1583,7 @@ export default function SalesPos({
                                             'pages.pos.walk_in_name',
                                             'Optional walk-in name',
                                         )}
-                                        className="h-11 rounded-xl"
+                                        className="h-11 min-h-11 scroll-mb-28 rounded-xl text-base"
                                     />
                                 ) : (
                                     <select
@@ -1256,12 +1628,12 @@ export default function SalesPos({
                                                 'pages.pos.new_customer',
                                                 'Quick-add customer name',
                                             )}
-                                            className="h-11 rounded-xl"
+                                            className="h-11 min-h-11 scroll-mb-28 rounded-xl text-base"
                                         />
                                         <Button
                                             type="button"
                                             variant="outline"
-                                            className="h-11 rounded-xl"
+                                            className="h-11 min-h-11 rounded-xl"
                                             disabled={creatingCustomer}
                                             onClick={createQuickCustomer}
                                         >
@@ -1279,7 +1651,7 @@ export default function SalesPos({
                                     type="button"
                                     size="sm"
                                     variant={splitMode ? 'default' : 'outline'}
-                                    className="rounded-lg"
+                                    className="h-11 min-h-11 rounded-lg px-3"
                                     onClick={() => {
                                         const next = !splitMode;
                                         setSplitMode(next);
@@ -1371,17 +1743,13 @@ export default function SalesPos({
                                                         ),
                                                     )
                                                 }
-                                                className="h-11 rounded-xl"
-                                                placeholder={t(
-                                                    'pages.pos.amount',
-                                                    'Amount',
-                                                )}
+                                                className="h-11 min-h-11 scroll-mb-28 rounded-xl text-base"
                                             />
                                             {payments.length > 1 ? (
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
-                                                    className="h-11 rounded-xl"
+                                                    className="h-11 min-h-11 rounded-xl"
                                                     onClick={() =>
                                                         setPayments((current) =>
                                                             current.filter(
@@ -1402,7 +1770,7 @@ export default function SalesPos({
                                     <Button
                                         type="button"
                                         variant="outline"
-                                        className="h-10 w-full rounded-xl"
+                                        className="h-11 min-h-11 w-full rounded-xl"
                                         onClick={() =>
                                             setPayments((current) => [
                                                 ...current,
@@ -1461,7 +1829,7 @@ export default function SalesPos({
                                                 'pages.pos.reference',
                                                 'Reference',
                                             )}
-                                            className="h-11 rounded-xl"
+                                            className="h-11 min-h-11 scroll-mb-28 rounded-xl text-base"
                                         />
                                     </div>
                                 </div>
@@ -1479,16 +1847,23 @@ export default function SalesPos({
                                         <Input
                                             id="cash_tendered"
                                             value={cashTendered}
-                                            onChange={(event) =>
+                                            onChange={(event) => {
                                                 setCashTendered(
                                                     event.target.value,
-                                                )
-                                            }
+                                                );
+                                                if (form.errors.cash_tendered) {
+                                                    form.clearErrors(
+                                                        'cash_tendered',
+                                                    );
+                                                }
+                                            }}
                                             placeholder={fromMinor(
                                                 cashShareMinor,
                                                 currency,
                                             )}
-                                            className="h-11 rounded-xl"
+                                            className="h-11 min-h-11 scroll-mb-28 rounded-xl text-base"
+                                            inputMode="decimal"
+                                            enterKeyHint="done"
                                         />
                                         <InputError
                                             message={form.errors.cash_tendered}
@@ -1524,7 +1899,9 @@ export default function SalesPos({
                                             )
                                         }
                                         placeholder={fromMinor(0, currency)}
-                                        className="h-11 rounded-xl"
+                                        className="h-11 min-h-11 scroll-mb-28 rounded-xl text-base"
+                                        inputMode="decimal"
+                                        enterKeyHint="done"
                                     />
                                     <InputError
                                         message={form.errors.discount_amount}
@@ -1571,49 +1948,113 @@ export default function SalesPos({
                                     </span>
                                 </div>
                             </div>
-
-                            <div className="grid grid-cols-2 gap-2">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-14 rounded-2xl text-base"
-                                    disabled={
-                                        cart.length === 0 ||
-                                        form.processing ||
-                                        !permissions.hold
-                                    }
-                                    onClick={submitHold}
-                                >
-                                    <Pause className="size-4" />
-                                    {t('pages.pos.hold', 'Hold')}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    className="h-14 rounded-2xl text-base"
-                                    disabled={
-                                        cart.length === 0 || form.processing
-                                    }
-                                    onClick={() => setConfirmOpen(true)}
-                                >
-                                    {form.processing
-                                        ? t(
-                                              'pages.pos.processing',
-                                              'Processing…',
-                                          )
-                                        : t(
-                                              'pages.pos.complete',
-                                              'Complete sale',
-                                          )}
-                                </Button>
-                            </div>
+                        </div>
+                        <div className="grid shrink-0 grid-cols-2 gap-2 bg-card pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:pb-0">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-14 min-h-14 rounded-2xl text-base"
+                                disabled={
+                                    cart.length === 0 ||
+                                    form.processing ||
+                                    !permissions.hold
+                                }
+                                onClick={() => submitHold()}
+                            >
+                                <Pause className="size-4" />
+                                {t('pages.pos.hold', 'Hold')}
+                            </Button>
+                            <Button
+                                type="button"
+                                className="h-14 min-h-14 rounded-2xl text-base"
+                                disabled={
+                                    cart.length === 0 || form.processing
+                                }
+                                onClick={openConfirmSale}
+                            >
+                                {form.processing
+                                    ? t(
+                                          'pages.pos.processing',
+                                          'Processing…',
+                                      )
+                                    : t(
+                                          'pages.pos.complete',
+                                          'Complete sale',
+                                      )}
+                            </Button>
                         </div>
                     </section>
+                </div>
+                </div>
+
+                {mobileCartOpen ? (
+                    <button
+                        type="button"
+                        className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+                        aria-label={t('pages.pos.close_cart', 'Close cart')}
+                        onPointerDown={(event) => {
+                            if (
+                                event.pointerType === 'touch' ||
+                                event.pointerType === 'pen'
+                            ) {
+                                event.preventDefault();
+                                setMobileCartOpen(false);
+                            }
+                        }}
+                        onClick={() => setMobileCartOpen(false)}
+                    />
+                ) : null}
+
+                <div
+                    data-pos-dock
+                    className={cn(
+                        'fixed inset-x-0 bottom-0 z-20 border-t border-border/80 bg-background/95 p-3 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur-md lg:hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+                        hideMobileDock &&
+                            'pointer-events-none invisible translate-y-full',
+                    )}
+                >
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-12 min-h-12 min-w-0 rounded-xl text-base"
+                            onClick={() => setMobileCartOpen(true)}
+                        >
+                            <ShoppingCart className="size-4 shrink-0" />
+                            <span className="truncate">
+                                {t('pages.pos.cart', 'Cart')}
+                                {cart.length > 0
+                                    ? ` · ${cart.length}`
+                                    : ''}
+                            </span>
+                            <span className="ml-auto shrink-0 tabular-nums">
+                                {formatMoney(totalMinor, currency, locale)}
+                            </span>
+                        </Button>
+                        <Button
+                            type="button"
+                            className="h-12 min-h-12 rounded-xl px-5 text-base"
+                            disabled={cart.length === 0 || form.processing}
+                            onClick={openConfirmSale}
+                        >
+                            {form.processing
+                                ? t('pages.pos.processing', 'Processing…')
+                                : t('pages.pos.pay', 'Pay')}
+                        </Button>
+                    </div>
                 </div>
             </div>
 
             {confirmOpen ? (
-                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
-                    <div className="w-full max-w-md rounded-2xl bg-background p-5 shadow-xl">
+                <div
+                    className={cn(
+                        'fixed inset-0 z-50 flex justify-center bg-black/50 p-3',
+                        keyboard.isOpen
+                            ? 'items-end pb-[max(0.75rem,var(--keyboard-inset,0px))]'
+                            : 'items-end sm:items-center sm:p-4',
+                    )}
+                >
+                    <div className="max-h-[min(42rem,calc(var(--vv-height,100dvh)-1.25rem))] w-full max-w-md overflow-y-auto overscroll-y-contain rounded-2xl bg-background p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl">
                         <div className="mb-4 flex items-start justify-between gap-3">
                             <div>
                                 <h3 className="font-display text-xl font-semibold">
@@ -1632,7 +2073,7 @@ export default function SalesPos({
                             <button
                                 type="button"
                                 onClick={() => setConfirmOpen(false)}
-                                className="rounded-lg p-2 hover:bg-muted"
+                                className="flex size-11 items-center justify-center rounded-xl hover:bg-muted"
                                 aria-label="Close"
                             >
                                 <X className="size-4" />
@@ -1697,7 +2138,7 @@ export default function SalesPos({
                             <Button
                                 type="button"
                                 variant="outline"
-                                className="h-12 rounded-xl"
+                                className="h-12 min-h-12 rounded-xl"
                                 onClick={() => setConfirmOpen(false)}
                                 disabled={form.processing}
                             >
@@ -1705,7 +2146,7 @@ export default function SalesPos({
                             </Button>
                             <Button
                                 type="button"
-                                className="h-12 rounded-xl"
+                                className="h-12 min-h-12 rounded-xl"
                                 onClick={() => submitSale(false)}
                                 disabled={form.processing}
                             >
@@ -1722,8 +2163,15 @@ export default function SalesPos({
             ) : null}
 
             {approvalOpen ? (
-                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
-                    <div className="w-full max-w-md space-y-4 rounded-2xl bg-background p-5 shadow-xl">
+                <div
+                    className={cn(
+                        'fixed inset-0 z-50 flex justify-center bg-black/50 p-3',
+                        keyboard.isOpen
+                            ? 'items-end pb-[max(0.75rem,var(--keyboard-inset,0px))]'
+                            : 'items-end sm:items-center sm:p-4',
+                    )}
+                >
+                    <div className="max-h-[min(42rem,calc(var(--vv-height,100dvh)-1.25rem))] w-full max-w-md space-y-4 overflow-y-auto overscroll-y-contain rounded-2xl bg-background p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl">
                         <div>
                             <h3 className="font-display text-xl font-semibold">
                                 {t(
@@ -1734,7 +2182,7 @@ export default function SalesPos({
                             <p className="text-sm text-muted-foreground">
                                 {t(
                                     'pages.pos.manager_approval_hint',
-                                    'Enter a manager PIN, or an owner/manager login and password.',
+                                    'Ask a manager to enter their 6-digit PIN. Each manager has a unique PIN.',
                                 )}
                             </p>
                         </div>
@@ -1746,49 +2194,23 @@ export default function SalesPos({
                                 id="manager_pin"
                                 value={managerPin}
                                 onChange={(event) =>
-                                    setManagerPin(event.target.value)
+                                    setManagerPin(
+                                        event.target.value
+                                            .replace(/\D/g, '')
+                                            .slice(0, 6),
+                                    )
                                 }
-                                className="h-11 rounded-xl"
+                                className="h-12 min-h-12 scroll-mb-28 rounded-xl text-center text-2xl tracking-[0.35em]"
                                 inputMode="numeric"
                                 autoComplete="one-time-code"
-                                maxLength={8}
-                                placeholder="4–8 digits"
-                            />
-                            <InputError
-                                message={form.errors['manager_approval.pin']}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="manager_login">
-                                {t('pages.pos.manager_login', 'Manager login')}
-                            </Label>
-                            <Input
-                                id="manager_login"
-                                value={managerLogin}
-                                onChange={(event) =>
-                                    setManagerLogin(event.target.value)
-                                }
-                                className="h-11 rounded-xl"
-                                autoComplete="username"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="manager_password">
-                                {t('pages.pos.manager_password', 'Password')}
-                            </Label>
-                            <Input
-                                id="manager_password"
-                                type="password"
-                                value={managerPassword}
-                                onChange={(event) =>
-                                    setManagerPassword(event.target.value)
-                                }
-                                className="h-11 rounded-xl"
-                                autoComplete="current-password"
+                                enterKeyHint="done"
+                                maxLength={6}
+                                placeholder="••••••"
+                                autoFocus
                             />
                             <InputError
                                 message={
-                                    form.errors['manager_approval.password'] ??
+                                    form.errors['manager_approval.pin'] ??
                                     form.errors.manager_approval
                                 }
                             />
@@ -1797,14 +2219,17 @@ export default function SalesPos({
                             <Button
                                 type="button"
                                 variant="outline"
-                                className="h-12 rounded-xl"
-                                onClick={() => setApprovalOpen(false)}
+                                className="h-12 min-h-12 rounded-xl"
+                                onClick={() => {
+                                    setApprovalOpen(false);
+                                    setManagerPin('');
+                                }}
                             >
                                 {t('pages.pos.cancel', 'Cancel')}
                             </Button>
                             <Button
                                 type="button"
-                                className="h-12 rounded-xl"
+                                className="h-12 min-h-12 rounded-xl"
                                 onClick={() => {
                                     if (pendingAction === 'hold') {
                                         submitHold(true);
@@ -1812,7 +2237,9 @@ export default function SalesPos({
                                         submitSale(true);
                                     }
                                 }}
-                                disabled={form.processing}
+                                disabled={
+                                    form.processing || managerPin.length !== 6
+                                }
                             >
                                 {pendingAction === 'hold'
                                     ? t(
@@ -1830,8 +2257,15 @@ export default function SalesPos({
             ) : null}
 
             {heldOpen ? (
-                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
-                    <div className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-2xl bg-background p-5 shadow-xl">
+                <div
+                    className={cn(
+                        'fixed inset-0 z-50 flex justify-center bg-black/50 p-3',
+                        keyboard.isOpen
+                            ? 'items-end pb-[max(0.75rem,var(--keyboard-inset,0px))]'
+                            : 'items-end sm:items-center sm:p-4',
+                    )}
+                >
+                    <div className="max-h-[min(42rem,calc(var(--vv-height,100dvh)-1.25rem))] w-full max-w-lg overflow-auto overscroll-y-contain rounded-2xl bg-background p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl">
                         <div className="mb-4 flex items-start justify-between gap-3">
                             <div>
                                 <h3 className="font-display text-xl font-semibold">
@@ -1847,7 +2281,7 @@ export default function SalesPos({
                             <button
                                 type="button"
                                 onClick={() => setHeldOpen(false)}
-                                className="rounded-lg p-2 hover:bg-muted"
+                                className="flex size-11 items-center justify-center rounded-xl hover:bg-muted"
                                 aria-label="Close"
                             >
                                 <X className="size-4" />
@@ -1865,7 +2299,7 @@ export default function SalesPos({
                                 {heldSales.map((sale) => (
                                     <div
                                         key={sale.id}
-                                        className="flex items-center justify-between gap-3 rounded-xl border border-border/70 p-3"
+                                        className="flex flex-col gap-3 rounded-xl border border-border/70 p-3 sm:flex-row sm:items-center sm:justify-between"
                                     >
                                         <div>
                                             <div className="font-medium">
@@ -1882,8 +2316,7 @@ export default function SalesPos({
                                         <div className="flex gap-1">
                                             <Button
                                                 type="button"
-                                                size="sm"
-                                                className="rounded-lg"
+                                                className="h-11 min-h-11 rounded-lg"
                                                 onClick={() =>
                                                     void resumeSale(sale.id)
                                                 }
@@ -1895,9 +2328,9 @@ export default function SalesPos({
                                             </Button>
                                             <Button
                                                 type="button"
-                                                size="sm"
+                                                size="icon"
                                                 variant="ghost"
-                                                className="rounded-lg"
+                                                className="size-11 min-h-11 rounded-lg"
                                                 onClick={() =>
                                                     removeHeld(sale.id)
                                                 }

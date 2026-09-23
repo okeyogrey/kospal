@@ -9,6 +9,7 @@ use App\Enums\StockMovementType;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\InventoryBalance;
+use App\Models\Product;
 use App\Models\StockCount;
 use App\Models\StockCountItem;
 use App\Models\User;
@@ -51,22 +52,35 @@ class StockCountService
                 'reference' => 'CNT-'.str_pad((string) $count->id, 6, '0', STR_PAD_LEFT),
             ]);
 
-            $balances = InventoryBalance::query()
+            $productQuery = Product::query()
+                ->forBusiness($business)
+                ->active()
+                ->orderBy('name');
+
+            if (! empty($data['product_ids'])) {
+                $productQuery->whereIn('id', $data['product_ids']);
+            }
+
+            $products = $productQuery->get(['id']);
+
+            if ($products->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'branch_id' => 'Add active products to the catalog before starting a stock count.',
+                ]);
+            }
+
+            $quantities = InventoryBalance::query()
                 ->where('business_id', $business->id)
                 ->where('branch_id', $branch->id)
-                ->when(
-                    ! empty($data['product_ids']),
-                    fn ($q) => $q->whereIn('product_id', $data['product_ids']),
-                )
-                ->with('product')
-                ->get();
+                ->whereIn('product_id', $products->pluck('id'))
+                ->pluck('quantity', 'product_id');
 
-            foreach ($balances as $balance) {
+            foreach ($products as $product) {
                 StockCountItem::query()->create([
                     'business_id' => $business->id,
                     'stock_count_id' => $count->id,
-                    'product_id' => $balance->product_id,
-                    'system_quantity' => (int) $balance->quantity,
+                    'product_id' => $product->id,
+                    'system_quantity' => (int) ($quantities[$product->id] ?? 0),
                     'counted_quantity' => null,
                     'variance' => null,
                 ]);
@@ -77,7 +91,7 @@ class StockCountService
                 auditable: $count,
                 metadata: [
                     'branch_id' => $branch->id,
-                    'item_count' => $balances->count(),
+                    'item_count' => $products->count(),
                 ],
                 actor: $actor,
                 businessId: $business->id,
@@ -187,6 +201,12 @@ class StockCountService
             $locked = StockCount::query()->whereKey($count->id)->lockForUpdate()->firstOrFail();
             $this->assertStatusTransition($locked, StockCountStatus::Completed);
             $locked->loadMissing(['items.product', 'branch', 'business']);
+
+            if ($locked->items->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'items' => 'This stock count has no products to complete.',
+                ]);
+            }
 
             $uncounted = $locked->items->filter(fn (StockCountItem $item) => $item->counted_quantity === null);
 

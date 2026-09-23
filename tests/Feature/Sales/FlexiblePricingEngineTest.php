@@ -61,7 +61,7 @@ function pricingContext(
         ->where('business_id', $business->id)
         ->where('user_id', $owner->id)
         ->firstOrFail();
-    $ownerMembership->forceFill(['approval_pin' => '2468'])->save();
+    $ownerMembership->forceFill(['approval_pin' => '246810'])->save();
 
     return compact('owner', 'business', 'branch', 'product');
 }
@@ -215,12 +215,12 @@ it('requires manager pin when price falls below cashier permission floor', funct
                 ],
             ],
         ]))
-        ->assertSessionHasErrors('manager_approval');
+        ->assertSessionHasErrors('manager_approval.pin');
 
     $this->actingAs($cashier)
         ->post(route('sales.store'), pricingSalePayload($branch, $product, [
             'manager_approval' => [
-                'pin' => '2468',
+                'pin' => '246810',
             ],
             'items' => [
                 [
@@ -239,6 +239,62 @@ it('requires manager pin when price falls below cashier permission floor', funct
     expect($sale->approved_by)->toBe($owner->id)
         ->and($item->manager_approved)->toBeTrue()
         ->and($item->negotiated_difference)->toBe(500);
+});
+
+it('lets cashiers self-approve price overrides when the owner enables the setting', function () {
+    ['business' => $business, 'branch' => $branch, 'product' => $product] = pricingContext(
+        sellingPrice: 2000,
+        costPrice: 1000,
+        minSellingPrice: 1000,
+    );
+    $business->update(['cashiers_can_approve_price_overrides' => true]);
+
+    $cashier = $this->addMember($business, BusinessRole::Cashier, branchIds: [$branch->id]);
+    BusinessMembership::query()
+        ->where('user_id', $cashier->id)
+        ->where('business_id', $business->id)
+        ->update(['negotiation_floor_percent' => 90]);
+
+    $this->clockInAndOpenDrawer($cashier);
+
+    $this->actingAs($cashier)
+        ->post(route('sales.store'), pricingSalePayload($branch, $product, [
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 1,
+                    'unit_price' => '15.00',
+                    'list_unit_price' => '20.00',
+                ],
+            ],
+        ]))
+        ->assertRedirect();
+
+    $sale = Sale::query()->firstOrFail();
+
+    expect($sale->total)->toBe(1500)
+        ->and(SaleItem::query()->value('unit_price'))->toBe(1500)
+        ->and(SaleItem::query()->value('negotiated_difference'))->toBe(500);
+});
+
+it('rejects duplicate manager approval pins in the same business', function () {
+    ['owner' => $owner, 'business' => $business] = $this->createBusinessWithOwner();
+    $manager = $this->addMember($business, BusinessRole::Manager);
+
+    BusinessMembership::query()
+        ->where('business_id', $business->id)
+        ->where('user_id', $owner->id)
+        ->firstOrFail()
+        ->forceFill(['approval_pin' => '112233'])
+        ->save();
+
+    $this->actingAs($manager)
+        ->put(route('approval-pin.update'), [
+            'pin' => '112233',
+            'pin_confirmation' => '112233',
+            'current_password' => 'password',
+        ])
+        ->assertSessionHasErrors('pin');
 });
 
 it('computes a negotiation score from price fidelity margin overrides and consistency', function () {

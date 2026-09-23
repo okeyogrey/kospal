@@ -16,11 +16,21 @@ import {
 
 type Option = { id: number; name: string };
 
+type PackDraft = {
+    id?: number;
+    name: string;
+    units_per_pack: string;
+    barcode: string;
+    selling_price: string;
+    is_active: boolean;
+};
+
 type ProductDetail = {
     id: number;
     name: string;
     sku: string;
     barcode: string | null;
+    base_unit_name: string;
     description: string | null;
     category_id: number | null;
     category_name: string | null;
@@ -35,6 +45,14 @@ type ProductDetail = {
     is_active: boolean;
     supplier_ids: number[];
     suppliers: Option[];
+    packs: Array<{
+        id: number;
+        name: string;
+        units_per_pack: number;
+        barcode: string | null;
+        selling_price: string;
+        is_active: boolean;
+    }>;
     stock_by_branch: Array<{
         id: number;
         branch_id: number;
@@ -72,6 +90,7 @@ export default function ProductShow({
         name: product.name,
         sku: product.sku,
         barcode: product.barcode ?? '',
+        base_unit_name: product.base_unit_name || 'piece',
         category_id: product.category_id ?? '',
         description: product.description ?? '',
         cost_price: product.cost_price,
@@ -81,7 +100,46 @@ export default function ProductShow({
         reorder_level: String(product.reorder_level),
         is_active: product.is_active,
         supplier_ids: product.supplier_ids,
+        packs: (product.packs ?? []).map(
+            (pack): PackDraft => ({
+                id: pack.id,
+                name: pack.name,
+                units_per_pack: String(pack.units_per_pack),
+                barcode: pack.barcode ?? '',
+                selling_price: pack.selling_price ?? '',
+                is_active: pack.is_active,
+            }),
+        ),
     });
+
+    const updatePack = (index: number, patch: Partial<PackDraft>) => {
+        form.setData(
+            'packs',
+            form.data.packs.map((pack, i) =>
+                i === index ? { ...pack, ...patch } : pack,
+            ),
+        );
+    };
+
+    const addPack = () => {
+        form.setData('packs', [
+            ...form.data.packs,
+            {
+                name: 'Carton',
+                units_per_pack: '24',
+                barcode: '',
+                selling_price: '',
+                is_active: true,
+            },
+        ]);
+    };
+
+    const removePack = (index: number) => {
+        form.setData(
+            'packs',
+            form.data.packs.filter((_, i) => i !== index),
+        );
+    };
 
     const toggleSupplier = (id: number) => {
         const current = form.data.supplier_ids;
@@ -167,6 +225,25 @@ export default function ProductShow({
                                             )
                                         }
                                     />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="base_unit_name">
+                                        Base unit name
+                                    </Label>
+                                    <Input
+                                        id="base_unit_name"
+                                        value={form.data.base_unit_name}
+                                        onChange={(e) =>
+                                            form.setData(
+                                                'base_unit_name',
+                                                e.target.value,
+                                            )
+                                        }
+                                        placeholder="piece, packet, bottle…"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Stock is always tracked in this unit.
+                                    </p>
                                 </div>
                                 <div className="grid gap-2 sm:col-span-2">
                                     <CategorySelect
@@ -294,6 +371,133 @@ export default function ProductShow({
                                     }
                                     className="min-h-24 rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                                 />
+                            </div>
+                            <div className="space-y-3 rounded-xl border border-border/70 p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                        <h3 className="text-sm font-medium">
+                                            Packs
+                                        </h3>
+                                        <p className="text-xs text-muted-foreground">
+                                            e.g. Carton of 24 {form.data.base_unit_name || 'pieces'}. Receive and sell in packs; stock stays in base units.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={addPack}
+                                    >
+                                        Add pack
+                                    </Button>
+                                </div>
+                                {form.data.packs.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">
+                                        No packs yet. Optional — add if you buy or sell by carton/bale.
+                                    </p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {form.data.packs.map((pack, index) => (
+                                            <div
+                                                key={pack.id ?? `new-${index}`}
+                                                className="grid gap-2 rounded-lg border border-border/60 p-3 sm:grid-cols-2"
+                                            >
+                                                <div className="grid gap-1">
+                                                    <Label>Name</Label>
+                                                    <Input
+                                                        value={pack.name}
+                                                        onChange={(e) =>
+                                                            updatePack(index, {
+                                                                name: e.target.value,
+                                                            })
+                                                        }
+                                                        placeholder="Carton"
+                                                    />
+                                                </div>
+                                                <div className="grid gap-1">
+                                                    <Label>
+                                                        Units per pack
+                                                    </Label>
+                                                    <Input
+                                                        type="number"
+                                                        min={2}
+                                                        value={pack.units_per_pack}
+                                                        onChange={(e) =>
+                                                            updatePack(index, {
+                                                                units_per_pack:
+                                                                    e.target
+                                                                        .value,
+                                                            })
+                                                        }
+                                                    />
+                                                </div>
+                                                <div className="grid gap-1">
+                                                    <Label>Pack barcode</Label>
+                                                    <Input
+                                                        value={pack.barcode}
+                                                        onChange={(e) =>
+                                                            updatePack(index, {
+                                                                barcode:
+                                                                    e.target
+                                                                        .value,
+                                                            })
+                                                        }
+                                                    />
+                                                </div>
+                                                <div className="grid gap-1">
+                                                    <Label>
+                                                        Pack selling price (
+                                                        {currency})
+                                                    </Label>
+                                                    <Input
+                                                        value={pack.selling_price}
+                                                        onChange={(e) =>
+                                                            updatePack(index, {
+                                                                selling_price:
+                                                                    e.target
+                                                                        .value,
+                                                            })
+                                                        }
+                                                        placeholder="Auto = units × piece price"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center justify-between sm:col-span-2">
+                                                    <label className="flex items-center gap-2 text-sm">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={
+                                                                pack.is_active
+                                                            }
+                                                            onChange={(e) =>
+                                                                updatePack(
+                                                                    index,
+                                                                    {
+                                                                        is_active:
+                                                                            e
+                                                                                .target
+                                                                                .checked,
+                                                                    },
+                                                                )
+                                                            }
+                                                        />
+                                                        Active
+                                                    </label>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() =>
+                                                            removePack(index)
+                                                        }
+                                                    >
+                                                        Remove
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <InputError message={form.errors.packs} />
                             </div>
                             <div className="grid gap-2">
                                 <Label>Suppliers</Label>

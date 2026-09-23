@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\BranchController;
+use App\Http\Controllers\CashSessionController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerPaymentController;
@@ -15,10 +16,14 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\Platform\BusinessSubscriptionController;
 use App\Http\Controllers\Platform\PaymentInstructionsController;
+use App\Http\Controllers\Platform\ReferralController as PlatformReferralController;
 use App\Http\Controllers\Platform\SubscriptionRequestController as PlatformSubscriptionRequestController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductivityController;
 use App\Http\Controllers\PurchaseOrderController;
+use App\Http\Controllers\PwaController;
+use App\Http\Controllers\ReferralController;
+use App\Http\Controllers\ReferralLandingController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\StaffController;
@@ -34,6 +39,15 @@ use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
 
+Route::get('r/{code}', ReferralLandingController::class)
+    ->middleware('throttle:30,1')
+    ->name('referrals.landing');
+
+Route::get('manifest.webmanifest', [PwaController::class, 'manifest'])
+    ->name('pwa.manifest');
+Route::get('sw.js', [PwaController::class, 'serviceWorker'])
+    ->name('pwa.service-worker');
+
 Route::post('locale', [LocaleController::class, 'update'])
     ->middleware('throttle:60,1')
     ->name('locale.update');
@@ -41,6 +55,10 @@ Route::post('locale', [LocaleController::class, 'update'])
 Route::get('invitations/{token}', [InvitationAcceptanceController::class, 'show'])
     ->middleware('throttle:30,1')
     ->name('invitations.accept.show');
+
+Route::post('invitations/{token}/register', [InvitationAcceptanceController::class, 'register'])
+    ->middleware(['guest', 'throttle:invitations'])
+    ->name('invitations.register');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('onboarding', [OnboardingController::class, 'create'])->name('onboarding.create');
@@ -320,18 +338,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->middleware('throttle:sensitive')
             ->name('shifts.force-close');
 
-        Route::get('cash-sessions', [\App\Http\Controllers\CashSessionController::class, 'index'])->name('cash-sessions.index');
-        Route::post('cash-sessions/open', [\App\Http\Controllers\CashSessionController::class, 'open'])
+        Route::get('cash-sessions', [CashSessionController::class, 'index'])->name('cash-sessions.index');
+        Route::post('cash-sessions/open', [CashSessionController::class, 'open'])
             ->middleware('throttle:sensitive')
             ->name('cash-sessions.open');
-        Route::get('cash-sessions/{cashSession}', [\App\Http\Controllers\CashSessionController::class, 'show'])->name('cash-sessions.show');
-        Route::post('cash-sessions/{cashSession}/movements', [\App\Http\Controllers\CashSessionController::class, 'storeMovement'])
+        Route::get('cash-sessions/{cashSession}', [CashSessionController::class, 'show'])->name('cash-sessions.show');
+        Route::post('cash-sessions/{cashSession}/movements', [CashSessionController::class, 'storeMovement'])
             ->middleware('throttle:sensitive')
             ->name('cash-sessions.movements.store');
-        Route::post('cash-sessions/{cashSession}/close', [\App\Http\Controllers\CashSessionController::class, 'close'])
+        Route::post('cash-sessions/{cashSession}/close', [CashSessionController::class, 'close'])
             ->middleware('throttle:sensitive')
             ->name('cash-sessions.close');
-        Route::get('cash-sessions/{cashSession}/z-report.pdf', [\App\Http\Controllers\CashSessionController::class, 'zReport'])
+        Route::get('cash-sessions/{cashSession}/z-report.pdf', [CashSessionController::class, 'zReport'])
             ->name('cash-sessions.z-report');
 
         Route::get('staff', [StaffController::class, 'index'])->name('staff.index');
@@ -355,6 +373,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('subscription/requests', [SubscriptionController::class, 'storeRequest'])
             ->middleware('throttle:sensitive')
             ->name('subscription.requests.store');
+
+        Route::get('referrals', [ReferralController::class, 'index'])->name('referrals.index');
+        Route::post('referrals', [ReferralController::class, 'store'])
+            ->middleware('throttle:invitations')
+            ->name('referrals.store');
+        Route::post('referrals/email', [ReferralController::class, 'email'])
+            ->middleware('throttle:invitations')
+            ->name('referrals.email');
     });
 
     Route::middleware('platform')->prefix('platform')->name('platform.')->group(function () {
@@ -376,6 +402,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('businesses/{business}/subscription', [BusinessSubscriptionController::class, 'update'])
             ->middleware('throttle:sensitive')
             ->name('businesses.subscription.update');
+
+        Route::get('referrals', [PlatformReferralController::class, 'index'])
+            ->name('referrals.index');
+        Route::post('referrals/{referral}/void', [PlatformReferralController::class, 'void'])
+            ->middleware('throttle:sensitive')
+            ->name('referrals.void');
     });
 });
 
