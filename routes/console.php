@@ -25,6 +25,10 @@ Schedule::command('sync:run')
     ->everyMinute()
     ->when(fn () => Schema::hasTable('sync_links') && SyncLink::query()->exists());
 
+Schedule::command('updates:pull')
+    ->hourly()
+    ->when(fn () => Deployment::isDesktop());
+
 Schedule::command('backup:run')
     ->hourly()
     ->when(function () {

@@ -56,6 +56,9 @@ pub fn start(app: &AppHandle) -> Result<PhpServer, String> {
     let app_root = prepare_app_root(app, &resource_dir)?;
 
     ensure_initialized(&php_exe, &app_root)?;
+    if apply_pending_update(&app_root)? {
+        let _ = run_artisan(&php_exe, &app_root, &["migrate", "--force"]);
+    }
 
     let port = free_port()?;
     let url = format!("http://127.0.0.1:{port}");
@@ -166,6 +169,7 @@ fn prepare_app_root(app: &AppHandle, resource_dir: &Path) -> Result<PathBuf, Str
 
     let needs_sync = !runtime_root.join("artisan").is_file() || installed_version != staged_version;
     if needs_sync {
+        let _ = fs::remove_dir_all(data_dir.join("pending-update-app"));
         if runtime_root.exists() {
             // Preserve user SQLite + env across upgrades when possible.
             let preserve_db = runtime_root.join("database").join("database.sqlite");
@@ -217,6 +221,49 @@ fn prepare_app_root(app: &AppHandle, resource_dir: &Path) -> Result<PathBuf, Str
     }
 
     Ok(runtime_root)
+}
+
+fn apply_pending_update(app_root: &Path) -> Result<bool, String> {
+    let Some(data_dir) = app_root.parent() else {
+        return Ok(false);
+    };
+    let pending = data_dir.join("pending-update-app");
+    if !pending.join("artisan").is_file() {
+        return Ok(false);
+    }
+
+    copy_update_tree(&pending, app_root, Path::new(""))?;
+    fs::remove_dir_all(&pending).map_err(|e| format!("remove pending update: {e}"))?;
+    Ok(true)
+}
+
+fn copy_update_tree(from: &Path, to_root: &Path, relative: &Path) -> Result<(), String> {
+    for entry in fs::read_dir(from).map_err(|e| format!("read {}: {e}", from.display()))? {
+        let entry = entry.map_err(|e| format!("entry: {e}"))?;
+        let rel = relative.join(entry.file_name());
+        let rel_key = rel.to_string_lossy().replace('\\', "/");
+        if rel_key == ".env"
+            || rel_key.starts_with("storage/")
+            || rel_key.starts_with("database/database.sqlite")
+        {
+            continue;
+        }
+
+        let ty = entry.file_type().map_err(|e| format!("file_type: {e}"))?;
+        let target = to_root.join(&rel);
+        if ty.is_dir() {
+            fs::create_dir_all(&target).map_err(|e| format!("mkdir {}: {e}", target.display()))?;
+            copy_update_tree(&entry.path(), to_root, &rel)?;
+        } else if ty.is_file() {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).ok();
+            }
+            fs::copy(entry.path(), &target).map_err(|e| {
+                format!("copy {} -> {}: {e}", entry.path().display(), target.display())
+            })?;
+        }
+    }
+    Ok(())
 }
 
 fn ensure_initialized(php_exe: &Path, app_root: &Path) -> Result<(), String> {

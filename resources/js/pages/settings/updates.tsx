@@ -1,5 +1,5 @@
-import { Form, Head, usePage } from '@inertiajs/react';
-import { RefreshCw } from 'lucide-react';
+import { Form, Head, router, usePage } from '@inertiajs/react';
+import { Download, RefreshCw } from 'lucide-react';
 import UpdateManagerController from '@/actions/App/Http/Controllers/Settings/UpdateManagerController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -42,7 +42,7 @@ export default function UpdateManager({
                 <Heading
                     variant="small"
                     title="Update manager"
-                    description="Check for desktop releases and choose your update channel."
+                    description="Download a published update, then close KOSPAL and open it again."
                 />
 
                 {flash?.success ? (
@@ -97,20 +97,33 @@ export default function UpdateManager({
                         </Alert>
                     ) : null}
 
-                    <Form
-                        {...UpdateManagerController.check.form()}
-                        options={{ preserveScroll: true }}
-                    >
-                        {({ processing }) => (
-                            <Button
-                                type="submit"
-                                disabled={processing || !supported}
-                            >
-                                <RefreshCw className="size-4" />
-                                Check for updates
-                            </Button>
-                        )}
-                    </Form>
+                    <div className="flex flex-wrap gap-2">
+                        <Form
+                            {...UpdateManagerController.check.form()}
+                            options={{ preserveScroll: true }}
+                        >
+                            {({ processing }) => (
+                                <Button
+                                    type="submit"
+                                    disabled={processing || !supported}
+                                >
+                                    <RefreshCw className="size-4" />
+                                    Check for updates
+                                </Button>
+                            )}
+                        </Form>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={!supported}
+                            onClick={() =>
+                                router.post('/settings/updates/pull')
+                            }
+                        >
+                            <Download className="size-4" />
+                            Download update
+                        </Button>
+                    </div>
                 </section>
 
                 <section className="space-y-4">

@@ -23,4 +23,13 @@ class UnsupportedUpdateService implements UpdateService
     {
         return null;
     }
+
+    public function pull(): array
+    {
+        return [
+            'downloaded' => false,
+            'version' => null,
+            'notes' => 'Updates are not supported in this deployment.',
+        ];
+    }
 }

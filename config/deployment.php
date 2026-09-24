@@ -62,7 +62,12 @@ return [
     */
 
     'updates' => [
-        'feed_url' => env('KOSPAL_UPDATE_FEED_URL'),
+        'feed_url' => env('KOSPAL_UPDATE_FEED_URL') ?: (filled(env('KOSPAL_SYNC_SERVER_URL'))
+            ? rtrim((string) env('KOSPAL_SYNC_SERVER_URL'), '/').'/api/updates/desktop'
+            : null),
+        'pending_directory' => env('KOSPAL_UPDATE_PENDING_DIRECTORY'),
+        'manifest_path' => storage_path('app/desktop-updates/manifest.json'),
+        'package_path' => storage_path('app/desktop-updates/kospal-desktop.zip'),
     ],
 
     /*

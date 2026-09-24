@@ -63,4 +63,21 @@ class UpdateManagerController extends Controller
 
         return back()->with('success', 'Update channel saved.');
     }
+
+    public function pull(TenantContext $tenant, UpdateService $updates): RedirectResponse
+    {
+        $this->desktopBusiness($tenant);
+
+        if (! $updates->isSupported()) {
+            return back()->with('error', 'Updates are not supported in this deployment.');
+        }
+
+        $result = $updates->pull();
+
+        if ($result['downloaded'] ?? false) {
+            return back()->with('success', (string) ($result['notes'] ?? 'Update downloaded. Close KOSPAL and open it again.'));
+        }
+
+        return back()->with('error', (string) ($result['notes'] ?? 'No update was downloaded.'));
+    }
 }

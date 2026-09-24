@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\DesktopUpdateController;
 use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\SyncController;
 use Illuminate\Support\Facades\Route;
@@ -16,6 +17,11 @@ Route::prefix('referrals')->middleware('throttle:60,1')->group(function () {
         Route::post('heartbeat', [ReferralController::class, 'heartbeat']);
         Route::post('email', [ReferralController::class, 'email']);
     });
+});
+
+Route::prefix('updates')->middleware('throttle:60,1')->group(function () {
+    Route::get('desktop', [DesktopUpdateController::class, 'show']);
+    Route::get('desktop/package', [DesktopUpdateController::class, 'package']);
 });
 
 Route::prefix('sync')->middleware('throttle:sync')->group(function () {

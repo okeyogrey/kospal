@@ -104,6 +104,9 @@ Route::middleware(['auth', 'verified', 'business'])->group(function () {
         ->name('updates.check');
     Route::put('settings/updates/channel', [UpdateManagerController::class, 'updateChannel'])
         ->name('updates.channel');
+    Route::post('settings/updates/pull', [UpdateManagerController::class, 'pull'])
+        ->middleware('throttle:10,1')
+        ->name('updates.pull');
 
     Route::get('settings/printer', [PrinterSettingsController::class, 'edit'])->name('printer.edit');
     Route::get('settings/printer/wizard', [PrinterWizardController::class, 'edit'])->name('printer.wizard');
