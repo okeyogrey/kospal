@@ -28,6 +28,11 @@ class InvitationPolicy
         return $this->sameBusiness($invitation) && $this->viewAny($user);
     }
 
+    public function provision(User $user, Invitation $invitation): bool
+    {
+        return $this->revoke($user, $invitation);
+    }
+
     /**
      * @param  list<BusinessRole>  $roles
      */

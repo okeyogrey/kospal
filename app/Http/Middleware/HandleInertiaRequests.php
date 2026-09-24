@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Contracts\FeatureFlagService;
 use App\Contracts\LicensingService;
+use App\Models\SyncAccount;
 use App\Models\SyncConflict;
 use App\Models\SyncLink;
 use App\Services\CashSessionService;
@@ -139,15 +140,26 @@ class HandleInertiaRequests extends Middleware
                 'error' => fn () => $request->session()->get('error'),
             ],
             'shopSync' => function () use ($business): array {
-                if ($business === null || ! Schema::hasTable('sync_conflicts')) {
+                if ($business === null || ! Schema::hasTable('sync_links') || ! Schema::hasTable('sync_conflicts')) {
                     return [
                         'linked' => false,
+                        'shared' => false,
                         'conflicts' => 0,
                     ];
                 }
 
+                $linked = SyncLink::query()->where('business_id', $business->id)->exists();
+                $shared = $linked;
+
+                if (! $shared && Schema::hasTable('sync_accounts') && is_string($business->public_uuid) && $business->public_uuid !== '') {
+                    $shared = SyncAccount::query()
+                        ->where('business_public_uuid', $business->public_uuid)
+                        ->exists();
+                }
+
                 return [
-                    'linked' => SyncLink::query()->where('business_id', $business->id)->exists(),
+                    'linked' => $linked,
+                    'shared' => $shared,
                     'conflicts' => SyncConflict::query()
                         ->where('business_id', $business->id)
                         ->whereNull('resolved_at')

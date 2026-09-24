@@ -3,6 +3,7 @@
 namespace App\Services\Sync;
 
 use App\Models\SyncLink;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Per-request cache of which businesses are linked.
@@ -15,6 +16,10 @@ final class SyncLinkIndex
 
     public function has(int $businessId): bool
     {
+        if (! Schema::hasTable('sync_links')) {
+            return false;
+        }
+
         if (! array_key_exists($businessId, $this->linked)) {
             $this->linked[$businessId] = SyncLink::query()
                 ->where('business_id', $businessId)

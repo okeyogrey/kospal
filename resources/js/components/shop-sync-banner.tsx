@@ -1,4 +1,4 @@
-import { Link, usePage } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -13,7 +13,11 @@ export function ShopSyncBanner() {
     const [conflicts, setConflicts] = useState<ConflictNotice[]>([]);
 
     useEffect(() => {
-        if (!shopSync?.linked && shopSync?.conflicts === 0) {
+        if (
+            !shopSync?.linked &&
+            !shopSync?.shared &&
+            shopSync?.conflicts === 0
+        ) {
             return;
         }
 
@@ -45,13 +49,38 @@ export function ShopSyncBanner() {
         };
 
         load();
-        const timer = window.setInterval(load, 20000);
+        const timer = window.setInterval(() => {
+            load();
+
+            if (!shopSync?.shared && !shopSync?.linked) {
+                return;
+            }
+
+            if (document.hidden) {
+                return;
+            }
+
+            const active = document.activeElement;
+
+            if (
+                active instanceof HTMLInputElement ||
+                active instanceof HTMLTextAreaElement ||
+                active instanceof HTMLSelectElement
+            ) {
+                return;
+            }
+
+            router.reload({
+                preserveScroll: true,
+                preserveState: true,
+            });
+        }, 20000);
 
         return () => {
             stopped = true;
             window.clearInterval(timer);
         };
-    }, [shopSync?.conflicts, shopSync?.linked]);
+    }, [shopSync?.conflicts, shopSync?.linked, shopSync?.shared]);
 
     const first = conflicts[0];
 

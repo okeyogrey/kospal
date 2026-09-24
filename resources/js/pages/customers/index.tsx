@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslations } from '@/hooks/use-translations';
+import { fromMinor, toMinor } from '@/lib/money';
 import {
     destroy,
     index as customersIndex,
@@ -92,7 +93,7 @@ export default function CustomersIndex({
             credit_enabled: customer.credit_enabled ?? false,
             credit_limit:
                 customer.credit_limit != null
-                    ? String(customer.credit_limit)
+                    ? fromMinor(customer.credit_limit, currency)
                     : '',
             payment_terms_days:
                 customer.payment_terms_days != null
@@ -367,7 +368,10 @@ export default function CustomersIndex({
                                         ...data,
                                         credit_limit:
                                             data.credit_limit !== ''
-                                                ? Number(data.credit_limit)
+                                                ? toMinor(
+                                                      data.credit_limit,
+                                                      currency,
+                                                  )
                                                 : null,
                                         payment_terms_days:
                                             data.payment_terms_days !== ''
@@ -449,13 +453,12 @@ export default function CustomersIndex({
                                             <>
                                                 <div className="space-y-2">
                                                     <Label htmlFor="credit_limit">
-                                                        Credit limit (minor
-                                                        units)
+                                                        Credit limit ({currency}
+                                                        )
                                                     </Label>
                                                     <Input
                                                         id="credit_limit"
-                                                        type="number"
-                                                        min={0}
+                                                        inputMode="decimal"
                                                         value={
                                                             createForm.data
                                                                 .credit_limit
@@ -514,7 +517,10 @@ export default function CustomersIndex({
                                         ...data,
                                         credit_limit:
                                             data.credit_limit !== ''
-                                                ? Number(data.credit_limit)
+                                                ? toMinor(
+                                                      data.credit_limit,
+                                                      currency,
+                                                  )
                                                 : null,
                                         payment_terms_days:
                                             data.payment_terms_days !== ''
@@ -581,12 +587,11 @@ export default function CustomersIndex({
                                         {editForm.data.credit_enabled ? (
                                             <div className="space-y-2">
                                                 <Label htmlFor="edit_credit_limit">
-                                                    Credit limit (minor units)
+                                                    Credit limit ({currency})
                                                 </Label>
                                                 <Input
                                                     id="edit_credit_limit"
-                                                    type="number"
-                                                    min={0}
+                                                    inputMode="decimal"
                                                     value={
                                                         editForm.data
                                                             .credit_limit

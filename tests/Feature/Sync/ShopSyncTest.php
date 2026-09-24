@@ -1,7 +1,9 @@
 <?php
 
 use App\Enums\StockMovementType;
+use App\Enums\SubscriptionStatus;
 use App\Models\Branch;
+use App\Models\Business;
 use App\Models\InventoryBalance;
 use App\Models\Product;
 use App\Models\Sale;
@@ -246,6 +248,144 @@ it('copies a staff password onto a computer that does not have that account yet'
     expect($cashier)->not->toBeNull()
         ->and(Hash::check('secret-pass', (string) $cashier?->password))->toBeTrue()
         ->and($owner->fresh()?->email)->not->toBe('evening@shop.test');
+});
+
+it('copies a linked shop into the office database for platform admin', function () {
+    $uuid = (string) Str::uuid();
+
+    $registered = $this->postJson('/api/sync/accounts', [
+        'business_public_uuid' => $uuid,
+        'business_name' => 'Oyugis Store',
+        'owner_email' => 'owner@oyugis.test',
+        'device_uuid' => (string) Str::uuid(),
+        'device_name' => "Grey's PC",
+    ])->assertCreated()->json();
+
+    $branchUuid = (string) Str::uuid();
+    $productUuid = (string) Str::uuid();
+
+    $this->withToken($registered['token'])
+        ->postJson('/api/sync/operations', [
+            'operations' => [
+                [
+                    'uuid' => (string) Str::uuid(),
+                    'entity_type' => 'branches',
+                    'entity_uuid' => $branchUuid,
+                    'op' => 'upsert',
+                    'payload' => [
+                        'name' => 'Main',
+                        'is_active' => true,
+                    ],
+                ],
+                [
+                    'uuid' => (string) Str::uuid(),
+                    'entity_type' => 'products',
+                    'entity_uuid' => $productUuid,
+                    'op' => 'upsert',
+                    'payload' => [
+                        'name' => 'Sugar',
+                        'sku' => 'SUGAR-1',
+                        'cost_price' => 10000,
+                        'selling_price' => 12000,
+                        'is_active' => true,
+                    ],
+                ],
+                [
+                    'uuid' => (string) Str::uuid(),
+                    'entity_type' => 'stock_movements',
+                    'entity_uuid' => (string) Str::uuid(),
+                    'op' => 'upsert',
+                    'payload' => [
+                        'type' => 'opening_stock',
+                        'quantity_delta' => 5,
+                        'branch_uuid' => $branchUuid,
+                        'product_uuid' => $productUuid,
+                    ],
+                ],
+            ],
+        ])
+        ->assertOk();
+
+    $business = Business::query()->where('public_uuid', $uuid)->first();
+
+    expect($business)->not->toBeNull()
+        ->and($business?->name)->toBe('Oyugis Store')
+        ->and($business?->owner?->email)->toBe('owner@oyugis.test')
+        ->and(Product::query()->where('business_id', $business?->id)->where('sku', 'SUGAR-1')->exists())->toBeTrue()
+        ->and(InventoryBalance::query()->where('business_id', $business?->id)->value('quantity'))->toBe(5);
+
+    $this->withToken($registered['token'])
+        ->getJson('/api/sync/office')
+        ->assertOk()
+        ->assertJsonPath('subscription_status', 'trial');
+
+    config(['deployment.mode' => 'web']);
+
+    $admin = User::factory()->platformSuperAdmin()->create();
+
+    $this->actingAs($admin)
+        ->get(route('platform.subscription-requests.index', ['status' => 'all']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('platform/subscription-requests/index')
+            ->where('businesses.0.name', 'Oyugis Store')
+            ->where('businesses.0.stock_units', 5)
+            ->where('businesses.0.products_count', 1)
+            ->where('businesses.0.computers.0.name', "Grey's PC"));
+});
+
+it('does not replace the platform admin password when a shop uses that email', function () {
+    $admin = User::factory()->platformSuperAdmin()->create([
+        'email' => 'admin@kospal.test',
+        'password' => Hash::make('admin-pass'),
+    ]);
+
+    $registered = $this->postJson('/api/sync/accounts', [
+        'business_public_uuid' => (string) Str::uuid(),
+        'business_name' => 'Shared Shop',
+        'owner_email' => 'admin@kospal.test',
+        'device_uuid' => (string) Str::uuid(),
+        'device_name' => 'Till A',
+    ])->assertCreated()->json();
+
+    $this->withToken($registered['token'])->postJson('/api/sync/operations', [
+        'operations' => [[
+            'uuid' => (string) Str::uuid(),
+            'entity_type' => 'users',
+            'entity_uuid' => (string) Str::uuid(),
+            'op' => 'upsert',
+            'payload' => [
+                'name' => 'Shop owner',
+                'email' => 'admin@kospal.test',
+                'password' => Hash::make('shop-pass'),
+            ],
+        ]],
+    ])->assertOk();
+
+    $fresh = $admin->fresh();
+
+    expect($fresh?->is_platform_super_admin)->toBeTrue()
+        ->and($fresh?->name)->toBe($admin->name)
+        ->and(Hash::check('admin-pass', (string) $fresh?->password))->toBeTrue()
+        ->and(Hash::check('shop-pass', (string) $fresh?->password))->toBeFalse();
+});
+
+it('stops a joined computer when the office suspends the shop', function () {
+    ['business' => $businessA] = $this->createBusinessWithOwner();
+    ['owner' => $ownerB, 'business' => $businessB] = $this->createBusinessWithOwner();
+
+    $sync = app(ShopSyncService::class);
+    $sync->link($businessA, 'http://sync.test', 'Till A');
+    $code = (string) SyncLink::query()->where('business_id', $businessA->id)->value('join_code');
+    $sync->join($businessB, $ownerB, 'http://sync.test', $code);
+
+    $businessA->forceFill([
+        'subscription_status' => SubscriptionStatus::Suspended,
+    ])->save();
+
+    $sync->run(SyncLink::query()->where('business_id', $businessB->id)->firstOrFail());
+
+    expect($businessB->fresh()?->subscription_status)->toBe(SubscriptionStatus::Suspended);
 });
 
 it('shows shop sync settings to the owner', function () {

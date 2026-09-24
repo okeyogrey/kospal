@@ -30,7 +30,7 @@ class PwaController extends Controller
             'display_override' => ['standalone', 'minimal-ui'],
             'prefer_related_applications' => false,
             'orientation' => 'any',
-            'background_color' => '#1F5C4A',
+            'background_color' => '#000000',
             'theme_color' => '#1F5C4A',
             'icons' => [
                 [

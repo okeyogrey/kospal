@@ -359,6 +359,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('staff/invitations', [StaffController::class, 'invite'])
             ->middleware('throttle:invitations')
             ->name('staff.invitations.store');
+        Route::post('staff/invitations/{invitation}/login', [StaffController::class, 'createLogin'])
+            ->middleware('throttle:sensitive')
+            ->name('staff.invitations.login');
         Route::delete('staff/invitations/{invitation}', [StaffController::class, 'revokeInvitation'])
             ->middleware('throttle:invitations')
             ->name('staff.invitations.destroy');

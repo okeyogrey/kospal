@@ -4,6 +4,7 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatMoney, fromMinor, toMinor } from '@/lib/money';
 
 type Option = { id: number; name: string };
 
@@ -38,23 +39,35 @@ export default function SupplierInvoicesCreate({
         supplier_invoice_number: '',
         invoice_date: '',
         due_date: '',
-        tax_total: '0',
+        tax_total: fromMinor(0, currency),
         notes: '',
         items: [
-            { product_id: '', description: '', quantity: '1', unit_cost: '0' },
+            {
+                product_id: '',
+                description: '',
+                quantity: '1',
+                unit_cost: fromMinor(0, currency),
+            },
         ] as LineItem[],
     });
 
     const productCost = (productId: string): string => {
         const product = products.find((p) => String(p.id) === productId);
 
-        return product?.cost_price != null ? String(product.cost_price) : '0';
+        return product?.cost_price != null
+            ? fromMinor(product.cost_price, currency)
+            : fromMinor(0, currency);
     };
 
     const addLine = () => {
         form.setData('items', [
             ...form.data.items,
-            { product_id: '', description: '', quantity: '1', unit_cost: '0' },
+            {
+                product_id: '',
+                description: '',
+                quantity: '1',
+                unit_cost: fromMinor(0, currency),
+            },
         ]);
     };
 
@@ -91,13 +104,13 @@ export default function SupplierInvoicesCreate({
     };
 
     const lineTotal = (item: LineItem): number =>
-        (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0);
+        (Number(item.quantity) || 0) * toMinor(item.unit_cost || '0', currency);
 
     const subtotal = form.data.items.reduce(
         (sum, item) => sum + lineTotal(item),
         0,
     );
-    const total = subtotal + (Number(form.data.tax_total) || 0);
+    const total = subtotal + toMinor(form.data.tax_total || '0', currency);
 
     return (
         <>
@@ -109,7 +122,7 @@ export default function SupplierInvoicesCreate({
                             Create supplier invoice
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Amounts are entered in {currency} minor units.
+                            Amounts are in {currency}.
                         </p>
                     </div>
                     <Button
@@ -117,9 +130,7 @@ export default function SupplierInvoicesCreate({
                         asChild
                         className="w-full sm:w-auto"
                     >
-                        <Link href="/supplier-invoices">
-                            Back to invoices
-                        </Link>
+                        <Link href="/supplier-invoices">Back to invoices</Link>
                     </Button>
                 </div>
 
@@ -135,14 +146,17 @@ export default function SupplierInvoicesCreate({
                                 : null,
                             invoice_date: data.invoice_date || null,
                             due_date: data.due_date || null,
-                            tax_total: Number(data.tax_total) || 0,
+                            tax_total: toMinor(data.tax_total || '0', currency),
                             items: data.items.map((item) => ({
                                 product_id: item.product_id
                                     ? Number(item.product_id)
                                     : null,
                                 description: item.description || null,
                                 quantity: Number(item.quantity),
-                                unit_cost: Number(item.unit_cost),
+                                unit_cost: toMinor(
+                                    item.unit_cost || '0',
+                                    currency,
+                                ),
                             })),
                         }));
                         form.post('/supplier-invoices');
@@ -175,9 +189,7 @@ export default function SupplierInvoicesCreate({
                             <InputError message={form.errors.supplier_id} />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="branch_id">
-                                Branch (optional)
-                            </Label>
+                            <Label htmlFor="branch_id">Branch (optional)</Label>
                             <select
                                 id="branch_id"
                                 value={form.data.branch_id}
@@ -216,9 +228,7 @@ export default function SupplierInvoicesCreate({
                                 }
                             />
                             <InputError
-                                message={
-                                    form.errors.supplier_invoice_number
-                                }
+                                message={form.errors.supplier_invoice_number}
                             />
                         </div>
                         <div className="space-y-2">
@@ -243,10 +253,7 @@ export default function SupplierInvoicesCreate({
                                 type="date"
                                 value={form.data.due_date}
                                 onChange={(event) =>
-                                    form.setData(
-                                        'due_date',
-                                        event.target.value,
-                                    )
+                                    form.setData('due_date', event.target.value)
                                 }
                             />
                             <InputError message={form.errors.due_date} />
@@ -270,9 +277,7 @@ export default function SupplierInvoicesCreate({
 
                     <div className="space-y-3">
                         <div className="flex items-center justify-between gap-2">
-                            <h2 className="text-sm font-medium">
-                                Line items
-                            </h2>
+                            <h2 className="text-sm font-medium">Line items</h2>
                             <Button
                                 type="button"
                                 variant="outline"
@@ -307,9 +312,7 @@ export default function SupplierInvoicesCreate({
                                             }
                                             className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
                                         >
-                                            <option value="">
-                                                No product
-                                            </option>
+                                            <option value="">No product</option>
                                             {products.map((product) => (
                                                 <option
                                                     key={product.id}
@@ -331,9 +334,7 @@ export default function SupplierInvoicesCreate({
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label
-                                            htmlFor={`description-${index}`}
-                                        >
+                                        <Label htmlFor={`description-${index}`}>
                                             Description
                                         </Label>
                                         <Input
@@ -382,11 +383,11 @@ export default function SupplierInvoicesCreate({
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor={`unit-cost-${index}`}>
-                                            Unit cost
+                                            Unit cost ({currency})
                                         </Label>
                                         <Input
                                             id={`unit-cost-${index}`}
-                                            type="number"
+                                            inputMode="decimal"
                                             min={0}
                                             value={item.unit_cost}
                                             onChange={(event) =>
@@ -426,11 +427,12 @@ export default function SupplierInvoicesCreate({
 
                     <div className="grid gap-4 sm:max-w-xs sm:justify-self-end">
                         <div className="space-y-2">
-                            <Label htmlFor="tax_total">Tax total</Label>
+                            <Label htmlFor="tax_total">
+                                Tax total ({currency})
+                            </Label>
                             <Input
                                 id="tax_total"
-                                type="number"
-                                min={0}
+                                inputMode="decimal"
                                 value={form.data.tax_total}
                                 onChange={(event) =>
                                     form.setData(
@@ -446,11 +448,15 @@ export default function SupplierInvoicesCreate({
                                 <dt className="text-muted-foreground">
                                     Subtotal
                                 </dt>
-                                <dd className="tabular-nums">{subtotal}</dd>
+                                <dd className="tabular-nums">
+                                    {formatMoney(subtotal, currency)}
+                                </dd>
                             </div>
                             <div className="flex justify-between font-medium">
                                 <dt>Total</dt>
-                                <dd className="tabular-nums">{total}</dd>
+                                <dd className="tabular-nums">
+                                    {formatMoney(total, currency)}
+                                </dd>
                             </div>
                         </dl>
                     </div>

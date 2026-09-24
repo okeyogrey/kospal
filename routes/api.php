@@ -26,5 +26,6 @@ Route::prefix('sync')->middleware('throttle:sync')->group(function () {
         Route::post('operations', [SyncController::class, 'push']);
         Route::get('operations', [SyncController::class, 'pull']);
         Route::post('join-code', [SyncController::class, 'regenerate']);
+        Route::get('office', [SyncController::class, 'office']);
     });
 });

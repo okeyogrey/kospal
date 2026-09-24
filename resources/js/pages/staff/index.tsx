@@ -49,6 +49,84 @@ type StaffSettings = {
     can_edit: boolean;
 };
 
+function InvitationLoginForm({ invitationId }: { invitationId: number }) {
+    const form = useForm({
+        name: '',
+        password: '',
+        password_confirmation: '',
+    });
+
+    return (
+        <form
+            className="mt-3 grid gap-2"
+            onSubmit={(event) => {
+                event.preventDefault();
+                form.post(`/staff/invitations/${invitationId}/login`, {
+                    preserveScroll: true,
+                });
+            }}
+        >
+            <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-1">
+                    <Label htmlFor={`staff-name-${invitationId}`}>Name</Label>
+                    <Input
+                        id={`staff-name-${invitationId}`}
+                        value={form.data.name}
+                        onChange={(event) =>
+                            form.setData('name', event.target.value)
+                        }
+                        required
+                    />
+                    <InputError message={form.errors.name} />
+                </div>
+                <div className="grid gap-1">
+                    <Label htmlFor={`staff-password-${invitationId}`}>
+                        Password
+                    </Label>
+                    <Input
+                        id={`staff-password-${invitationId}`}
+                        type="password"
+                        value={form.data.password}
+                        onChange={(event) =>
+                            form.setData('password', event.target.value)
+                        }
+                        required
+                    />
+                    <InputError message={form.errors.password} />
+                </div>
+            </div>
+            <div className="grid gap-1">
+                <Label htmlFor={`staff-password-confirm-${invitationId}`}>
+                    Confirm password
+                </Label>
+                <Input
+                    id={`staff-password-confirm-${invitationId}`}
+                    type="password"
+                    value={form.data.password_confirmation}
+                    onChange={(event) =>
+                        form.setData(
+                            'password_confirmation',
+                            event.target.value,
+                        )
+                    }
+                    required
+                />
+                <InputError message={form.errors.password_confirmation} />
+                <InputError message={form.errors.invitation} />
+                <InputError message={form.errors.email} />
+            </div>
+            <Button
+                type="submit"
+                size="sm"
+                className="w-fit"
+                disabled={form.processing}
+            >
+                Create login
+            </Button>
+        </form>
+    );
+}
+
 function MembershipEditor({
     membership,
     branches,
@@ -387,14 +465,17 @@ export default function StaffIndex({
                                     {invitations.map((invitation) => (
                                         <li
                                             key={invitation.id}
-                                            className="flex items-center justify-between gap-3 p-4"
+                                            className="p-4"
                                         >
+                                            <div className="flex items-center justify-between gap-3">
                                             <div>
                                                 <p className="font-medium">
                                                     {invitation.email}
                                                 </p>
                                                 <p className="text-sm text-muted-foreground">
-                                                    {invitation.role}
+                                                    {invitation.role}. Set a
+                                                    name and password. No email
+                                                    is sent.
                                                 </p>
                                             </div>
                                             <Form
@@ -415,6 +496,10 @@ export default function StaffIndex({
                                                     </Button>
                                                 )}
                                             </Form>
+                                            </div>
+                                            <InvitationLoginForm
+                                                invitationId={invitation.id}
+                                            />
                                         </li>
                                     ))}
                                 </ul>
@@ -423,7 +508,12 @@ export default function StaffIndex({
                     </div>
 
                     <aside className="rounded-2xl border border-border/80 bg-card/80 p-4">
-                        <h2 className="mb-3 font-medium">Invite staff</h2>
+                        <h2 className="mb-3 font-medium">Add staff</h2>
+                        <p className="mb-3 text-sm text-muted-foreground">
+                            Add their email and role, then create their login
+                            in the list. They can sign in on this computer and
+                            on any computer that has joined the shop.
+                        </p>
                         {!limits.can_add_staff ? (
                             <p className="text-sm text-muted-foreground">
                                 Staff seat limit reached for the {limits.plan}{' '}
@@ -521,7 +611,7 @@ export default function StaffIndex({
                                     className="w-full"
                                     disabled={inviteForm.processing}
                                 >
-                                    Send invitation
+                                    Add staff member
                                 </Button>
                             </form>
                         )}

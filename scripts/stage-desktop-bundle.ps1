@@ -97,6 +97,8 @@ function Sync-LaravelApp {
         "/XD"
     ) + $excludeDirNames + @(
         "/XF", ".env", ".env.backup", ".env.production", "phpunit.xml", "phpunit.xml.dist",
+        "database.sqlite", "database.sqlite-journal", "database.sqlite-wal", "database.sqlite-shm",
+        "hot", "laravel.log",
         "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np"
     )
 
@@ -104,6 +106,35 @@ function Sync-LaravelApp {
     $code = $LASTEXITCODE
     if ($code -ge 8) {
         throw "robocopy failed with exit code $code"
+    }
+
+    # Drop this machine's database, logs, uploads, and compiled config.
+    # The desktop host creates a fresh SQLite file on first launch.
+    foreach ($rel in @(
+        "database\database.sqlite",
+        "database\database.sqlite-journal",
+        "database\database.sqlite-wal",
+        "database\database.sqlite-shm",
+        "public\hot"
+    )) {
+        $path = Join-Path $AppDir $rel
+        if (Test-Path $path) {
+            Remove-Item $path -Force
+        }
+    }
+
+    foreach ($dir in @(
+        "storage\app",
+        "storage\framework\cache",
+        "storage\framework\sessions",
+        "storage\framework\views",
+        "storage\logs",
+        "bootstrap\cache"
+    )) {
+        $path = Join-Path $AppDir $dir
+        if (Test-Path $path) {
+            Get-ChildItem $path -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 
     # Fresh writable dirs inside the staged tree (runtime data is copied to AppData on first launch).
@@ -126,13 +157,47 @@ function Sync-LaravelApp {
     $envText = Get-Content $envTarget -Raw
     $envText = $envText -replace "(?m)^APP_ENV=.*$", "APP_ENV=production"
     $envText = $envText -replace "(?m)^APP_DEBUG=.*$", "APP_DEBUG=false"
+    $envText = $envText -replace "(?m)^LOG_LEVEL=.*$", "LOG_LEVEL=error"
     $envText = $envText -replace "(?m)^APP_URL=.*$", "APP_URL=http://127.0.0.1:8000"
     $envText = $envText -replace "(?m)^KOSPAL_DEPLOYMENT_MODE=.*$", "KOSPAL_DEPLOYMENT_MODE=desktop"
     $envText = $envText -replace "(?m)^DB_CONNECTION=.*$", "DB_CONNECTION=sqlite"
+
+    $rootEnv = Join-Path $Root ".env"
+    $licenseSecret = ""
+    $syncUrl = "https://software.kospal.com"
+    if (Test-Path $rootEnv) {
+        foreach ($line in Get-Content $rootEnv) {
+            if ($line -match '^KOSPAL_LICENSE_SECRET=(.+)$') {
+                $licenseSecret = $Matches[1].Trim().Trim('"').Trim("'")
+            }
+            if ($line -match '^KOSPAL_SYNC_SERVER_URL=(.+)$') {
+                $candidate = $Matches[1].Trim().Trim('"').Trim("'")
+                if ($candidate -ne "") {
+                    $syncUrl = $candidate
+                }
+            }
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($licenseSecret)) {
+        throw "KOSPAL_LICENSE_SECRET is missing from .env. Add it on this computer before building the setup file."
+    }
+
+    function Set-StagedEnvLine([string]$Text, [string]$Key, [string]$Value) {
+        $pattern = "(?m)^#?\s*$([regex]::Escape($Key))=.*$"
+        if ($Text -match $pattern) {
+            return [regex]::Replace($Text, $pattern, "$Key=$Value")
+        }
+
+        return $Text.TrimEnd() + "`r`n$Key=$Value`r`n"
+    }
+
+    $envText = Set-StagedEnvLine $envText "KOSPAL_LICENSE_SECRET" $licenseSecret
+    $envText = Set-StagedEnvLine $envText "KOSPAL_SYNC_SERVER_URL" $syncUrl
     Set-Content -Path $envTarget -Value $envText -Encoding UTF8
+    Write-Step "License lock and shop address written into the desktop app."
 
     # Marker used by the Rust host to know the staged bundle version.
-    Set-Content -Path (Join-Path $AppDir ".desktop-bundle-version") -Value "0.1.0-php84" -Encoding ASCII
+    Set-Content -Path (Join-Path $AppDir ".desktop-bundle-version") -Value "0.1.1-php84" -Encoding ASCII
 
     Write-Step "Laravel app staged."
 }

@@ -11,7 +11,7 @@ it('serves a standalone web app manifest', function () {
         ->assertOk()
         ->assertJsonPath('display', 'standalone')
         ->assertJsonPath('start_url', '/dashboard')
-        ->assertJsonPath('background_color', '#1F5C4A')
+        ->assertJsonPath('background_color', '#000000')
         ->assertJsonPath('theme_color', '#1F5C4A')
         ->assertJsonPath('shortcuts.0.url', '/sales/pos');
 

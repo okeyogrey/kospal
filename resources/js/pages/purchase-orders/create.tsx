@@ -5,6 +5,7 @@ import { SearchableSelect } from '@/components/searchable-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { fromMinor, toMinor } from '@/lib/money';
 
 type Option = { id: number; name: string };
 
@@ -40,20 +41,30 @@ export default function PurchaseOrdersCreate({
         expected_at: '',
         notes: '',
         items: [
-            { product_id: '', quantity_ordered: '1', unit_cost: '0' },
+            {
+                product_id: '',
+                quantity_ordered: '1',
+                unit_cost: fromMinor(0, currency),
+            },
         ] as LineItem[],
     });
 
     const productCost = (productId: string): string => {
         const product = products.find((p) => String(p.id) === productId);
 
-        return product?.cost_price != null ? String(product.cost_price) : '0';
+        return product?.cost_price != null
+            ? fromMinor(product.cost_price, currency)
+            : fromMinor(0, currency);
     };
 
     const addLine = () => {
         form.setData('items', [
             ...form.data.items,
-            { product_id: '', quantity_ordered: '1', unit_cost: '0' },
+            {
+                product_id: '',
+                quantity_ordered: '1',
+                unit_cost: fromMinor(0, currency),
+            },
         ]);
     };
 
@@ -99,8 +110,7 @@ export default function PurchaseOrdersCreate({
                             Create purchase order
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Unit costs are entered in {currency} minor units
-                            (e.g. cents).
+                            Unit costs are in {currency}.
                         </p>
                     </div>
                     <Button
@@ -125,10 +135,8 @@ export default function PurchaseOrdersCreate({
                             expected_at: data.expected_at || null,
                             items: data.items.map((item) => ({
                                 product_id: Number(item.product_id),
-                                quantity_ordered: Number(
-                                    item.quantity_ordered,
-                                ),
-                                unit_cost: Number(item.unit_cost),
+                                quantity_ordered: Number(item.quantity_ordered),
+                                unit_cost: toMinor(item.unit_cost, currency),
                             })),
                         }));
                         form.post('/purchase-orders');
@@ -214,9 +222,7 @@ export default function PurchaseOrdersCreate({
 
                     <div className="space-y-3">
                         <div className="flex items-center justify-between gap-2">
-                            <h2 className="text-sm font-medium">
-                                Line items
-                            </h2>
+                            <h2 className="text-sm font-medium">Line items</h2>
                             <Button
                                 type="button"
                                 variant="outline"
@@ -296,12 +302,11 @@ export default function PurchaseOrdersCreate({
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor={`unit-cost-${index}`}>
-                                            Unit cost
+                                            Unit cost ({currency})
                                         </Label>
                                         <Input
                                             id={`unit-cost-${index}`}
-                                            type="number"
-                                            min={0}
+                                            inputMode="decimal"
                                             value={item.unit_cost}
                                             onChange={(event) =>
                                                 updateLine(

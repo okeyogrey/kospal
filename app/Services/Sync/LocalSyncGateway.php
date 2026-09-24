@@ -35,6 +35,11 @@ class LocalSyncGateway implements SyncGateway
         return $this->hub->pull($this->device($token), $after);
     }
 
+    public function office(string $serverUrl, string $token): ?array
+    {
+        return $this->hub->officeStatus($this->device($token));
+    }
+
     public function regenerate(string $serverUrl, string $token): array
     {
         return $this->hub->regenerateJoinCode($this->device($token));

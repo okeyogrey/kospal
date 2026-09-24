@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\SaleSequence;
 use App\Models\SyncLink;
+use Illuminate\Support\Facades\Schema;
 
 class SaleNumberGenerator
 {
@@ -63,6 +64,10 @@ class SaleNumberGenerator
      */
     private function devicePrefix(Business $business): string
     {
+        if (! Schema::hasTable('sync_links')) {
+            return '';
+        }
+
         $deviceUuid = SyncLink::query()->where('business_id', $business->id)->value('device_uuid');
 
         if (! is_string($deviceUuid) || $deviceUuid === '') {

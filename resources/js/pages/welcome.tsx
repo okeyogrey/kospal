@@ -30,10 +30,11 @@ export default function Welcome() {
 
                 <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 pt-[max(1.5rem,env(safe-area-inset-top))]">
                     <div className="flex items-center gap-3">
-                        <AppLogoIcon className="size-10 text-[oklch(0.4_0.1_165)]" />
-                        <span className="font-display text-xl font-semibold tracking-wide">
-                            {t('brand.name')}
-                        </span>
+                        <AppLogoIcon
+                            lockup
+                            alt={t('brand.name')}
+                            className="h-20 w-auto"
+                        />
                     </div>
                     <nav className="flex items-center gap-2">
                         {auth.user ? (

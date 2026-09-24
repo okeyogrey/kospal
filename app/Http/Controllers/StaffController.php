@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Concerns\PasswordValidationRules;
 use App\Contracts\FeatureFlagService;
 use App\Enums\BusinessRole;
 use App\Enums\InvitationStatus;
@@ -19,6 +20,8 @@ use Inertia\Response;
 
 class StaffController extends Controller
 {
+    use PasswordValidationRules;
+
     public function index(TenantContext $tenant, FeatureFlagService $limits): Response
     {
         $this->authorize('viewAny', BusinessMembership::class);
@@ -156,6 +159,23 @@ class StaffController extends Controller
         $staff->deactivateMembership($membership, request()->user());
 
         return back()->with('success', 'Staff member deactivated.');
+    }
+
+    public function createLogin(
+        Request $request,
+        Invitation $invitation,
+        StaffInvitationService $staff,
+    ): RedirectResponse {
+        $this->authorize('provision', $invitation);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'password' => $this->passwordRules(),
+        ]);
+
+        $staff->createLogin($invitation, $data['name'], $data['password']);
+
+        return back()->with('success', 'Login created. They can sign in with that email and password on this computer and on any computer that has joined the shop.');
     }
 
     public function revokeInvitation(

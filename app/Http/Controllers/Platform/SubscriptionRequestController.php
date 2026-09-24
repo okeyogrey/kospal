@@ -10,9 +10,12 @@ use App\Http\Requests\Platform\ApproveSubscriptionRequestRequest;
 use App\Http\Requests\Platform\RejectSubscriptionRequestRequest;
 use App\Models\Business;
 use App\Models\SubscriptionRequest;
+use App\Models\SyncAccount;
 use App\Services\SubscriptionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -82,14 +85,55 @@ class SubscriptionRequestController extends Controller
             ])
             ->latest()
             ->limit(50)
-            ->get()
-            ->map(fn (Business $business) => [
+            ->get();
+
+        $businessIds = $businesses->pluck('id');
+        $productCounts = DB::table('products')
+            ->whereIn('business_id', $businessIds)
+            ->selectRaw('business_id, COUNT(*) as aggregate')
+            ->groupBy('business_id')
+            ->pluck('aggregate', 'business_id');
+        $salesCounts = DB::table('sales')
+            ->whereIn('business_id', $businessIds)
+            ->selectRaw('business_id, COUNT(*) as aggregate')
+            ->groupBy('business_id')
+            ->pluck('aggregate', 'business_id');
+        $stockUnits = DB::table('inventory_balances')
+            ->whereIn('business_id', $businessIds)
+            ->selectRaw('business_id, SUM(quantity) as aggregate')
+            ->groupBy('business_id')
+            ->pluck('aggregate', 'business_id');
+
+        $accounts = Schema::hasTable('sync_accounts')
+            ? SyncAccount::query()
+                ->with('devices:id,sync_account_id,name,last_seen_at')
+                ->get()
+                ->keyBy(fn (SyncAccount $account): string => (string) $account->business_public_uuid)
+            : collect();
+
+        $businessPayload = $businesses->map(function (Business $business) use ($productCounts, $salesCounts, $stockUnits, $accounts): array {
+            $account = $accounts->get((string) $business->public_uuid);
+
+            return [
                 'id' => $business->id,
                 'name' => $business->name,
                 'plan' => $business->plan->value,
                 'subscription_status' => $business->subscription_status->value,
                 'subscription_ends_at' => $business->subscription_ends_at?->toDateString(),
                 'owner' => $business->owner?->only(['name', 'email']),
+                'products_count' => (int) ($productCounts[$business->id] ?? 0),
+                'sales_count' => (int) ($salesCounts[$business->id] ?? 0),
+                'stock_units' => (int) ($stockUnits[$business->id] ?? 0),
+                'computers' => $account instanceof SyncAccount
+                    ? $account->devices
+                        ->sortBy('name')
+                        ->map(fn ($device): array => [
+                            'name' => (string) $device->name,
+                            'last_seen_at' => $device->last_seen_at?->toIso8601String(),
+                        ])
+                        ->values()
+                        ->all()
+                    : [],
                 'branches' => $business->branches
                     ->sortBy('name')
                     ->map(fn ($branch) => [
@@ -99,11 +143,12 @@ class SubscriptionRequestController extends Controller
                     ])
                     ->values()
                     ->all(),
-            ]);
+            ];
+        });
 
         return Inertia::render('platform/subscription-requests/index', [
             'requests' => $requests,
-            'businesses' => $businesses,
+            'businesses' => $businessPayload,
             'filters' => [
                 'status' => $status,
             ],

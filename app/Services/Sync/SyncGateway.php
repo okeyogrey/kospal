@@ -31,4 +31,12 @@ interface SyncGateway
      * @return array{join_code: string}
      */
     public function regenerate(string $serverUrl, string $token): array;
+
+    /**
+     * Office plan and subscription for this shop. Null when the server
+     * does not publish one yet.
+     *
+     * @return array{plan: string, subscription_status: string, subscription_ends_at: string|null}|null
+     */
+    public function office(string $serverUrl, string $token): ?array;
 }

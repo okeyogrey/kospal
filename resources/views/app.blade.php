@@ -51,7 +51,7 @@
                 z-index: 2147483647;
                 align-items: center;
                 justify-content: center;
-                background: #1F5C4A;
+                background: #000000;
             }
 
             html.kospal-standalone:not(.kospal-booted) #kospal-boot-splash {
@@ -66,7 +66,7 @@
         </style>
 
         <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
         @fonts
@@ -79,11 +79,7 @@
     </head>
     <body class="font-sans antialiased">
         <div id="kospal-boot-splash" role="presentation">
-            <svg width="96" height="96" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <rect width="64" height="64" rx="16" fill="#1F5C4A"/>
-                <path d="M18 44V20H30.4C34.9 20 38 22.8 38 27.1C38 30.1 36.3 32.4 33.6 33.3L39.5 44H34.1L28.7 34H22.7V44H18ZM22.7 30.2H29.8C32.1 30.2 33.5 28.8 33.5 26.9C33.5 25 32.1 23.7 29.8 23.7H22.7V30.2Z" fill="#F2D48A"/>
-                <circle cx="46" cy="20" r="4" fill="#F2D48A"/>
-            </svg>
+            <img src="/brand/logo.png" alt="" width="280" height="280" draggable="false">
         </div>
         <x-inertia::app />
         <script>

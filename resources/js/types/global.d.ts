@@ -34,6 +34,7 @@ declare module '@inertiajs/core' {
             };
             shopSync: {
                 linked: boolean;
+                shared: boolean;
                 conflicts: number;
             };
             sidebarOpen: boolean;

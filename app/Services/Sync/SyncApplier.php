@@ -74,6 +74,27 @@ class SyncApplier
     }
 
     /**
+     * Apply an operation onto the office copy of a shop.
+     *
+     * @param  array{
+     *     uuid: string,
+     *     entity_type: string,
+     *     entity_uuid: string,
+     *     op: string,
+     *     payload?: array<string, mixed>
+     * }  $operation
+     */
+    public function applyCanonical(Business $business, array $operation): string
+    {
+        $link = new SyncLink([
+            'device_uuid' => '00000000-0000-0000-0000-000000000000',
+        ]);
+        $operation['device_uuid'] = 'office';
+
+        return $this->apply($business, $link, $operation);
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      */
     private function applyStockMovement(Business $business, string $remoteUuid, array $payload): string
@@ -233,6 +254,10 @@ class SyncApplier
 
         $password = $payload['password'] ?? null;
         unset($payload['password']);
+
+        if ($existing?->is_platform_super_admin === true) {
+            return 'applied';
+        }
 
         $attributes = $this->mapAttributes($business, $payload);
 

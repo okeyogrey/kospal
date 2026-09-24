@@ -33,12 +33,11 @@ export default function AuthSimpleLayout({
                             href={home()}
                             className="flex flex-col items-center gap-2 font-medium"
                         >
-                            <div className="mb-1 flex size-12 items-center justify-center overflow-hidden rounded-2xl shadow-sm">
-                                <AppLogoIcon className="size-12" />
-                            </div>
-                            <span className="font-display text-lg font-semibold tracking-wide">
-                                {t('brand.name')}
-                            </span>
+                            <AppLogoIcon
+                                lockup
+                                alt={t('brand.name', 'KOSPAL')}
+                                className="h-40 w-auto"
+                            />
                             <span className="sr-only">{title}</span>
                         </Link>
 

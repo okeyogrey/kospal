@@ -2,7 +2,9 @@
 
 namespace App\Services\Sync;
 
+use App\Enums\Plan;
 use App\Enums\StockMovementType;
+use App\Enums\SubscriptionStatus;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\InventoryBalance;
@@ -156,6 +158,7 @@ class ShopSyncService
         try {
             $this->pushAll($link);
             $this->pullAll($link);
+            $this->applyOfficeStatus($link);
             $link->forceFill([
                 'last_synced_at' => now(),
                 'last_error' => null,
@@ -424,6 +427,31 @@ class ShopSyncService
                 'message' => $conflict['message'],
             ]);
         }
+    }
+
+    private function applyOfficeStatus(SyncLink $link): void
+    {
+        $office = $this->gateway->office($link->server_url, (string) $link->token);
+        $business = $link->business;
+
+        if ($office === null || $business === null) {
+            return;
+        }
+
+        $plan = Plan::tryFrom($office['plan']);
+        $status = SubscriptionStatus::tryFrom($office['subscription_status']);
+
+        if ($plan === null || $status === null) {
+            return;
+        }
+
+        SyncContext::silence(function () use ($business, $plan, $status, $office): void {
+            $business->forceFill([
+                'plan' => $plan,
+                'subscription_status' => $status,
+                'subscription_ends_at' => $office['subscription_ends_at'],
+            ])->save();
+        });
     }
 
     private function hasLocalHistory(Business $business): bool

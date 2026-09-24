@@ -8,6 +8,7 @@ use App\Models\Invitation;
 use App\Models\User;
 use App\Notifications\BusinessInvitationNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Tests\Support\CreatesBusinesses;
 
@@ -164,4 +165,37 @@ it('persists manager branch assignments on staff update', function () {
         ->assertRedirect();
 
     expect($manager->fresh()->branches()->pluck('branches.id')->all())->toBe([$branch->id]);
+});
+
+it('lets the owner create a staff login without signing themselves out', function () {
+    ['owner' => $owner, 'branch' => $branch] = $this->createBusinessWithOwner([
+        'plan' => Plan::Pro,
+    ]);
+
+    $this->actingAs($owner)
+        ->post(route('staff.invitations.store'), [
+            'email' => 'cashier@shop.test',
+            'role' => 'cashier',
+            'branch_ids' => [$branch->id],
+        ])
+        ->assertRedirect();
+
+    $invitation = Invitation::query()->where('email', 'cashier@shop.test')->firstOrFail();
+
+    $this->actingAs($owner)
+        ->post(route('staff.invitations.login', $invitation), [
+            'name' => 'Amina',
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $cashier = User::query()->where('email', 'cashier@shop.test')->first();
+
+    expect($cashier)->not->toBeNull()
+        ->and(Hash::check('password', (string) $cashier?->password))->toBeTrue()
+        ->and($cashier?->memberships()->where('role', 'cashier')->exists())->toBeTrue();
+
+    $this->assertAuthenticatedAs($owner);
 });

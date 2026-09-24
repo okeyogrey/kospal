@@ -38,6 +38,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
@@ -67,6 +68,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureLocalePersistence();
         $this->configureRouteBindings();
         $this->configureShopSync();
+        $this->configureHttpCertificates();
     }
 
     protected function configureAuthorization(): void
@@ -114,6 +116,27 @@ class AppServiceProvider extends ServiceProvider
             });
 
             $class::observe(SyncModelObserver::class);
+        }
+    }
+
+    protected function configureHttpCertificates(): void
+    {
+        $configured = config('kospal.http_ca_bundle');
+        $candidates = [
+            is_string($configured) ? $configured : null,
+            base_path('resources/certs/cacert.pem'),
+        ];
+
+        foreach ($candidates as $path) {
+            if (! is_string($path) || $path === '' || ! is_file($path)) {
+                continue;
+            }
+
+            Http::globalOptions([
+                'verify' => $path,
+            ]);
+
+            return;
         }
     }
 

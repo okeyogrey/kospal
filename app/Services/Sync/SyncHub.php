@@ -12,6 +12,10 @@ use Illuminate\Validation\ValidationException;
 
 class SyncHub
 {
+    public function __construct(
+        protected HubShopMaterializer $office,
+    ) {}
+
     /**
      * @param  array{business_public_uuid: string, business_name: string, owner_email: string, device_uuid: string, device_name: string}  $data
      * @return array{token: string, join_code: string, business_public_uuid: string, business_name: string}
@@ -35,6 +39,8 @@ class SyncHub
                 'owner_email' => $data['owner_email'],
                 'join_code' => $this->makeJoinCode(),
             ]);
+
+            $this->office->ensureBusiness($account);
 
             return $this->issueDevice($account, $data['device_uuid'], $data['device_name']);
         });
@@ -229,6 +235,12 @@ class SyncHub
 
             $device->forceFill(['last_seen_at' => now()])->save();
 
+            $account = SyncAccount::query()->find($device->sync_account_id);
+
+            if ($account instanceof SyncAccount) {
+                $this->office->materialize($account);
+            }
+
             return [
                 'accepted' => $accepted,
                 'conflicts' => $conflicts,
@@ -243,6 +255,12 @@ class SyncHub
     public function pull(SyncDevice $device, int $after): array
     {
         $device->forceFill(['last_seen_at' => now()])->save();
+
+        $account = $device->account;
+
+        if ($account instanceof SyncAccount) {
+            $this->office->materialize($account);
+        }
 
         return array_values(SyncOperation::query()
             ->where('sync_account_id', $device->sync_account_id)
@@ -287,6 +305,20 @@ class SyncHub
         $account->forceFill(['join_code' => $code])->save();
 
         return ['join_code' => $code];
+    }
+
+    /**
+     * @return array{plan: string, subscription_status: string, subscription_ends_at: string|null}|null
+     */
+    public function officeStatus(SyncDevice $device): ?array
+    {
+        $account = $device->account;
+
+        if ($account === null) {
+            return null;
+        }
+
+        return $this->office->officeStatus($account);
     }
 
     public function deviceFromToken(string $token): ?SyncDevice

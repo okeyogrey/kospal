@@ -65,6 +65,17 @@ class SyncController extends Controller
         return response()->json($hub->regenerateJoinCode($this->device($request)));
     }
 
+    public function office(Request $request, SyncHub $hub): JsonResponse
+    {
+        $status = $hub->officeStatus($this->device($request));
+
+        if ($status === null) {
+            abort(404);
+        }
+
+        return response()->json($status);
+    }
+
     private function device(Request $request): SyncDevice
     {
         $device = $request->attributes->get('sync_device');

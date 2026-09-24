@@ -37,6 +37,10 @@ type BusinessRow = {
     subscription_status: string;
     subscription_ends_at: string | null;
     owner: { name: string; email: string } | null;
+    products_count: number;
+    sales_count: number;
+    stock_units: number;
+    computers: Array<{ name: string; last_seen_at: string | null }>;
     branches: Array<{ id: number; name: string; is_active: boolean }>;
 };
 
@@ -80,7 +84,8 @@ export default function PlatformSubscriptionRequestsIndex({
                         </h1>
                         <p className="text-sm text-muted-foreground">
                             Approve offline payments, update plans, and audit
-                            every change.
+                            every change. Shops linked from the Windows app
+                            appear here with their stock, sales, and computers.
                         </p>
                     </div>
                     <Button asChild variant="outline">
@@ -140,15 +145,25 @@ export default function PlatformSubscriptionRequestsIndex({
                         Business subscriptions
                     </div>
                     <ul className="divide-y divide-border/70">
-                        {businesses.map((business) => (
-                            <BusinessCard
-                                key={business.id}
-                                business={business}
-                                plans={plans}
-                                planMaxBranches={plan_max_branches}
-                                subscriptionStatuses={subscription_statuses}
-                            />
-                        ))}
+                        {businesses.length === 0 ? (
+                            <li className="p-4 text-sm text-muted-foreground">
+                                No businesses yet. A shop created in the
+                                Windows app shows up here after it links to
+                                this office.
+                            </li>
+                        ) : (
+                            businesses.map((business) => (
+                                <BusinessCard
+                                    key={business.id}
+                                    business={business}
+                                    plans={plans}
+                                    planMaxBranches={plan_max_branches}
+                                    subscriptionStatuses={
+                                        subscription_statuses
+                                    }
+                                />
+                            ))
+                        )}
                     </ul>
                 </section>
             </div>
@@ -447,6 +462,16 @@ function BusinessCard({
                 <p className="text-sm text-muted-foreground">
                     {business.owner?.name} · {business.owner?.email}
                 </p>
+                <p className="text-sm text-muted-foreground">
+                    {business.products_count} products · {business.stock_units}{' '}
+                    in stock · {business.sales_count} sales
+                </p>
+                {business.computers.length > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                        Computers:{' '}
+                        {business.computers.map((computer) => computer.name).join(', ')}
+                    </p>
+                )}
                 <KeepBranchFields
                     branches={business.branches}
                     selectedPlan={form.data.plan}

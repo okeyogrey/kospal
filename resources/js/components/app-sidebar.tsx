@@ -311,7 +311,11 @@ export function AppSidebar() {
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton size="lg" asChild>
+                        <SidebarMenuButton
+                            size="lg"
+                            asChild
+                            className="h-auto py-1.5 group-data-[collapsible=icon]:p-0!"
+                        >
                             <Link
                                 href={
                                     isPlatformAdmin

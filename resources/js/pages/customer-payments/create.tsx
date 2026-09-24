@@ -4,7 +4,7 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { formatMoney } from '@/lib/money';
+import { formatMoney, fromMinor, toMinor } from '@/lib/money';
 
 type Option = { id: number; name: string };
 
@@ -42,11 +42,13 @@ export default function CustomerPaymentsCreate({
     const form = useForm({
         customer_id: String(defaultCustomerId ?? customers[0]?.id ?? ''),
         method: methods[0]?.value ?? 'cash',
-        amount: '0',
+        amount: fromMinor(0, currency),
         paid_at: new Date().toISOString().slice(0, 10),
         external_reference: '',
         notes: '',
-        allocations: [{ sale_id: '', amount: '0' }] as AllocationLine[],
+        allocations: [
+            { sale_id: '', amount: fromMinor(0, currency) },
+        ] as AllocationLine[],
     });
 
     const salesForCustomer = openSales.filter(
@@ -59,7 +61,7 @@ export default function CustomerPaymentsCreate({
     const addLine = () => {
         form.setData('allocations', [
             ...form.data.allocations,
-            { sale_id: '', amount: '0' },
+            { sale_id: '', amount: fromMinor(0, currency) },
         ]);
     };
 
@@ -86,7 +88,7 @@ export default function CustomerPaymentsCreate({
                     return {
                         ...line,
                         sale_id: value,
-                        amount: String(saleAmountDue(value)),
+                        amount: fromMinor(saleAmountDue(value), currency),
                     };
                 }
 
@@ -96,7 +98,7 @@ export default function CustomerPaymentsCreate({
     };
 
     const allocatedTotal = form.data.allocations.reduce(
-        (sum, line) => sum + (Number(line.amount) || 0),
+        (sum, line) => sum + toMinor(line.amount || '0', currency),
         0,
     );
 
@@ -110,10 +112,14 @@ export default function CustomerPaymentsCreate({
                             Record customer payment
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Amounts are entered in {currency} minor units.
+                            Amounts are in {currency}.
                         </p>
                     </div>
-                    <Button variant="outline" asChild className="w-full sm:w-auto">
+                    <Button
+                        variant="outline"
+                        asChild
+                        className="w-full sm:w-auto"
+                    >
                         <Link href="/customer-payments">Back to payments</Link>
                     </Button>
                 </div>
@@ -125,10 +131,10 @@ export default function CustomerPaymentsCreate({
                         form.transform((data) => ({
                             ...data,
                             customer_id: Number(data.customer_id),
-                            amount: Number(data.amount),
+                            amount: toMinor(data.amount || '0', currency),
                             allocations: data.allocations.map((line) => ({
                                 sale_id: Number(line.sale_id),
-                                amount: Number(line.amount),
+                                amount: toMinor(line.amount || '0', currency),
                             })),
                         }));
                         form.post('/customer-payments');
@@ -141,16 +147,25 @@ export default function CustomerPaymentsCreate({
                                 id="customer_id"
                                 value={form.data.customer_id}
                                 onChange={(event) => {
-                                    form.setData('customer_id', event.target.value);
+                                    form.setData(
+                                        'customer_id',
+                                        event.target.value,
+                                    );
                                     form.setData('allocations', [
-                                        { sale_id: '', amount: '0' },
+                                        {
+                                            sale_id: '',
+                                            amount: fromMinor(0, currency),
+                                        },
                                     ]);
                                 }}
                                 className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
                             >
                                 <option value="">Select customer</option>
                                 {customers.map((customer) => (
-                                    <option key={customer.id} value={customer.id}>
+                                    <option
+                                        key={customer.id}
+                                        value={customer.id}
+                                    >
                                         {customer.name}
                                     </option>
                                 ))}
@@ -168,7 +183,10 @@ export default function CustomerPaymentsCreate({
                                 className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
                             >
                                 {methods.map((method) => (
-                                    <option key={method.value} value={method.value}>
+                                    <option
+                                        key={method.value}
+                                        value={method.value}
+                                    >
                                         {method.label}
                                     </option>
                                 ))}
@@ -179,11 +197,10 @@ export default function CustomerPaymentsCreate({
 
                     <div className="grid gap-4 sm:grid-cols-3">
                         <div className="space-y-2">
-                            <Label htmlFor="amount">Amount</Label>
+                            <Label htmlFor="amount">Amount ({currency})</Label>
                             <Input
                                 id="amount"
-                                type="number"
-                                min={1}
+                                inputMode="decimal"
                                 value={form.data.amount}
                                 onChange={(event) =>
                                     form.setData('amount', event.target.value)
@@ -217,7 +234,9 @@ export default function CustomerPaymentsCreate({
                                     )
                                 }
                             />
-                            <InputError message={form.errors.external_reference} />
+                            <InputError
+                                message={form.errors.external_reference}
+                            />
                         </div>
                     </div>
 
@@ -280,16 +299,23 @@ export default function CustomerPaymentsCreate({
                                                 }
                                                 className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
                                             >
-                                                <option value="">Select sale</option>
-                                                {salesForCustomer.map((sale) => (
-                                                    <option
-                                                        key={sale.id}
-                                                        value={sale.id}
-                                                    >
-                                                        {sale.sale_number} · Due{' '}
-                                                        {sale.amount_due_formatted}
-                                                    </option>
-                                                ))}
+                                                <option value="">
+                                                    Select sale
+                                                </option>
+                                                {salesForCustomer.map(
+                                                    (sale) => (
+                                                        <option
+                                                            key={sale.id}
+                                                            value={sale.id}
+                                                        >
+                                                            {sale.sale_number} ·
+                                                            Due{' '}
+                                                            {
+                                                                sale.amount_due_formatted
+                                                            }
+                                                        </option>
+                                                    ),
+                                                )}
                                             </select>
                                             <InputError
                                                 message={
@@ -300,13 +326,14 @@ export default function CustomerPaymentsCreate({
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor={`alloc-amount-${index}`}>
-                                                Amount
+                                            <Label
+                                                htmlFor={`alloc-amount-${index}`}
+                                            >
+                                                Amount ({currency})
                                             </Label>
                                             <Input
                                                 id={`alloc-amount-${index}`}
-                                                type="number"
-                                                min={1}
+                                                inputMode="decimal"
                                                 value={line.amount}
                                                 onChange={(event) =>
                                                     updateLine(
@@ -330,9 +357,12 @@ export default function CustomerPaymentsCreate({
                                                 variant="ghost"
                                                 size="icon"
                                                 disabled={
-                                                    form.data.allocations.length === 1
+                                                    form.data.allocations
+                                                        .length === 1
                                                 }
-                                                onClick={() => removeLine(index)}
+                                                onClick={() =>
+                                                    removeLine(index)
+                                                }
                                                 aria-label="Remove line"
                                             >
                                                 <Trash2 className="size-4" />
@@ -345,7 +375,7 @@ export default function CustomerPaymentsCreate({
 
                         <p className="text-right text-sm text-muted-foreground">
                             Allocated:{' '}
-                            <span className="font-medium tabular-nums text-foreground">
+                            <span className="font-medium text-foreground tabular-nums">
                                 {formatMoney(allocatedTotal, currency)}
                             </span>
                         </p>

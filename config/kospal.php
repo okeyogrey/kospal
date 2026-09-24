@@ -170,14 +170,17 @@ return [
     |--------------------------------------------------------------------------
     |
     | Desktop installs keep their own database and exchange changes with a
-    | hosted KOSPAL server (KOSPAL_SYNC_SERVER_URL). Leave empty until the
-    | server address is known. Owners can also type it under Settings → Shops.
+    | hosted KOSPAL office (KOSPAL_SYNC_SERVER_URL). The office database is the
+    | shared shop: products, stock, and sales. Each computer keeps a working
+    | copy so it can sell while offline, then sends those changes immediately.
     |
     */
 
     'sync' => [
         'server_url' => env('KOSPAL_SYNC_SERVER_URL'),
     ],
+
+    'http_ca_bundle' => env('KOSPAL_HTTP_CA_BUNDLE'),
 
     'referral' => [
         'credit_percent' => 10,

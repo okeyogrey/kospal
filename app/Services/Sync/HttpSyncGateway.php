@@ -70,6 +70,32 @@ class HttpSyncGateway implements SyncGateway
         return $normalized;
     }
 
+    public function office(string $serverUrl, string $token): ?array
+    {
+        $response = $this->send($serverUrl, $token)->get('/api/sync/office');
+
+        if (in_array($response->status(), [404, 405], true)) {
+            return null;
+        }
+
+        /** @var array{plan?: string, subscription_status?: string, subscription_ends_at?: string|null} $decoded */
+        $decoded = $this->decode($response);
+        $plan = $decoded['plan'] ?? null;
+        $status = $decoded['subscription_status'] ?? null;
+
+        if (! is_string($plan) || $plan === '' || ! is_string($status) || $status === '') {
+            return null;
+        }
+
+        $ends = $decoded['subscription_ends_at'] ?? null;
+
+        return [
+            'plan' => $plan,
+            'subscription_status' => $status,
+            'subscription_ends_at' => is_string($ends) && $ends !== '' ? $ends : null,
+        ];
+    }
+
     public function regenerate(string $serverUrl, string $token): array
     {
         /** @var array{join_code: string} $decoded */

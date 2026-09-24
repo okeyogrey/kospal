@@ -76,8 +76,13 @@ class StaffInvitationService
             'branch_ids' => $validatedBranchIds,
         ]);
 
-        Notification::route('mail', $email)
-            ->notify(new BusinessInvitationNotification($invitation));
+        try {
+            Notification::route('mail', $email)
+                ->notify(new BusinessInvitationNotification($invitation));
+        } catch (\Throwable) {
+            // Desktop installs do not send mail. The owner creates the login
+            // on the staff page, and that account syncs to joined computers.
+        }
 
         $this->audit->log(
             action: 'staff.invited',
@@ -92,6 +97,37 @@ class StaffInvitationService
         );
 
         return $invitation;
+    }
+
+    /**
+     * Create the invited person's login while the owner stays signed in.
+     */
+    public function createLogin(Invitation $invitation, string $name, string $password): BusinessMembership
+    {
+        if (! $invitation->isAcceptable()) {
+            throw ValidationException::withMessages([
+                'invitation' => 'This invitation is no longer valid.',
+            ]);
+        }
+
+        if (User::query()->where('email', $invitation->email)->exists()) {
+            throw ValidationException::withMessages([
+                'email' => 'An account already exists for this email. They can sign in with their current password.',
+            ]);
+        }
+
+        $business = $invitation->business()->firstOrFail();
+
+        return DB::transaction(function () use ($invitation, $name, $password, $business) {
+            $user = User::query()->create([
+                'name' => $name,
+                'email' => $invitation->email,
+                'password' => $password,
+                'email_verified_at' => now(),
+            ]);
+
+            return $this->acceptForUser($invitation, $user, $business);
+        });
     }
 
     /**

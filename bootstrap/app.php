@@ -9,6 +9,7 @@ use App\Http\Middleware\EnsureStaffShiftActive;
 use App\Http\Middleware\EnsureSubscriptionAllowsWrites;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RefreshSharedShop;
 use App\Http\Middleware\ResolveTenantContext;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             SetLocale::class,
             HandleAppearance::class,
             ResolveTenantContext::class,
+            RefreshSharedShop::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);

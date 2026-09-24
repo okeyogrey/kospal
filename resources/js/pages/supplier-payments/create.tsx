@@ -4,7 +4,7 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { formatMoney } from '@/lib/money';
+import { formatMoney, fromMinor, toMinor } from '@/lib/money';
 
 type Option = { id: number; name: string };
 
@@ -41,12 +41,12 @@ export default function SupplierPaymentsCreate({
     const form = useForm({
         supplier_id: String(defaultSupplierId ?? suppliers[0]?.id ?? ''),
         method: methods[0]?.value ?? 'cash',
-        amount: '0',
+        amount: fromMinor(0, currency),
         paid_at: new Date().toISOString().slice(0, 10),
         external_reference: '',
         notes: '',
         allocations: [
-            { supplier_invoice_id: '', amount: '0' },
+            { supplier_invoice_id: '', amount: fromMinor(0, currency) },
         ] as AllocationLine[],
     });
 
@@ -61,7 +61,7 @@ export default function SupplierPaymentsCreate({
     const addLine = () => {
         form.setData('allocations', [
             ...form.data.allocations,
-            { supplier_invoice_id: '', amount: '0' },
+            { supplier_invoice_id: '', amount: fromMinor(0, currency) },
         ]);
     };
 
@@ -88,7 +88,7 @@ export default function SupplierPaymentsCreate({
                     return {
                         ...line,
                         supplier_invoice_id: value,
-                        amount: String(invoiceAmountDue(value)),
+                        amount: fromMinor(invoiceAmountDue(value), currency),
                     };
                 }
 
@@ -98,7 +98,7 @@ export default function SupplierPaymentsCreate({
     };
 
     const allocatedTotal = form.data.allocations.reduce(
-        (sum, line) => sum + (Number(line.amount) || 0),
+        (sum, line) => sum + toMinor(line.amount || '0', currency),
         0,
     );
 
@@ -112,7 +112,7 @@ export default function SupplierPaymentsCreate({
                             Record supplier payment
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Amounts are entered in {currency} minor units.
+                            Amounts are in {currency}.
                         </p>
                     </div>
                     <Button
@@ -120,9 +120,7 @@ export default function SupplierPaymentsCreate({
                         asChild
                         className="w-full sm:w-auto"
                     >
-                        <Link href="/supplier-payments">
-                            Back to payments
-                        </Link>
+                        <Link href="/supplier-payments">Back to payments</Link>
                     </Button>
                 </div>
 
@@ -133,12 +131,12 @@ export default function SupplierPaymentsCreate({
                         form.transform((data) => ({
                             ...data,
                             supplier_id: Number(data.supplier_id),
-                            amount: Number(data.amount),
+                            amount: toMinor(data.amount || '0', currency),
                             allocations: data.allocations.map((line) => ({
                                 supplier_invoice_id: Number(
                                     line.supplier_invoice_id,
                                 ),
-                                amount: Number(line.amount),
+                                amount: toMinor(line.amount || '0', currency),
                             })),
                         }));
                         form.post('/supplier-payments');
@@ -156,7 +154,10 @@ export default function SupplierPaymentsCreate({
                                         event.target.value,
                                     );
                                     form.setData('allocations', [
-                                        { supplier_invoice_id: '', amount: '0' },
+                                        {
+                                            supplier_invoice_id: '',
+                                            amount: fromMinor(0, currency),
+                                        },
                                     ]);
                                 }}
                                 className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
@@ -179,10 +180,7 @@ export default function SupplierPaymentsCreate({
                                 id="method"
                                 value={form.data.method}
                                 onChange={(event) =>
-                                    form.setData(
-                                        'method',
-                                        event.target.value,
-                                    )
+                                    form.setData('method', event.target.value)
                                 }
                                 className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
                             >
@@ -201,17 +199,13 @@ export default function SupplierPaymentsCreate({
 
                     <div className="grid gap-4 sm:grid-cols-3">
                         <div className="space-y-2">
-                            <Label htmlFor="amount">Amount</Label>
+                            <Label htmlFor="amount">Amount ({currency})</Label>
                             <Input
                                 id="amount"
-                                type="number"
-                                min={1}
+                                inputMode="decimal"
                                 value={form.data.amount}
                                 onChange={(event) =>
-                                    form.setData(
-                                        'amount',
-                                        event.target.value,
-                                    )
+                                    form.setData('amount', event.target.value)
                                 }
                             />
                             <InputError message={form.errors.amount} />
@@ -223,10 +217,7 @@ export default function SupplierPaymentsCreate({
                                 type="date"
                                 value={form.data.paid_at}
                                 onChange={(event) =>
-                                    form.setData(
-                                        'paid_at',
-                                        event.target.value,
-                                    )
+                                    form.setData('paid_at', event.target.value)
                                 }
                             />
                             <InputError message={form.errors.paid_at} />
@@ -295,16 +286,12 @@ export default function SupplierPaymentsCreate({
                                         className="grid gap-2 rounded-lg border border-border/80 p-3 sm:grid-cols-[1fr_8rem_auto]"
                                     >
                                         <div className="space-y-2">
-                                            <Label
-                                                htmlFor={`invoice-${index}`}
-                                            >
+                                            <Label htmlFor={`invoice-${index}`}>
                                                 Invoice
                                             </Label>
                                             <select
                                                 id={`invoice-${index}`}
-                                                value={
-                                                    line.supplier_invoice_id
-                                                }
+                                                value={line.supplier_invoice_id}
                                                 onChange={(event) =>
                                                     updateLine(
                                                         index,
@@ -345,12 +332,11 @@ export default function SupplierPaymentsCreate({
                                             <Label
                                                 htmlFor={`alloc-amount-${index}`}
                                             >
-                                                Amount
+                                                Amount ({currency})
                                             </Label>
                                             <Input
                                                 id={`alloc-amount-${index}`}
-                                                type="number"
-                                                min={1}
+                                                inputMode="decimal"
                                                 value={line.amount}
                                                 onChange={(event) =>
                                                     updateLine(
@@ -392,7 +378,7 @@ export default function SupplierPaymentsCreate({
 
                         <p className="text-right text-sm text-muted-foreground">
                             Allocated:{' '}
-                            <span className="font-medium tabular-nums text-foreground">
+                            <span className="font-medium text-foreground tabular-nums">
                                 {formatMoney(allocatedTotal, currency)}
                             </span>
                         </p>

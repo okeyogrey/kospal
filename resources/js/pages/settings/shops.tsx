@@ -54,7 +54,7 @@ export default function ShopsSettings({
             <div className="space-y-6">
                 <Heading
                     title="Shops"
-                    description="Connect this computer to your other shops and tills. Each computer keeps working when the internet drops, then catches up."
+                    description="Connect this computer to the office. The office keeps the shared products, stock, and sales, so another location sees the same shop. This computer still sells if the internet drops, then sends those changes when it reconnects."
                 />
 
                 {flash.success && (
@@ -182,7 +182,8 @@ export default function ShopsSettings({
                                     Link this shop
                                 </h2>
                                 <p className="mt-1 text-sm text-muted-foreground">
-                                    Use this on the first computer. It creates
+                                    Use this on the first computer. The shop
+                                    address is already filled in. It creates
                                     the shared shop and a join code for the
                                     others.
                                 </p>
@@ -200,7 +201,7 @@ export default function ShopsSettings({
                                             event.target.value,
                                         )
                                     }
-                                    placeholder="https://app.example.com"
+                                    placeholder="https://software.kospal.com"
                                 />
                                 <InputError
                                     message={linkForm.errors.server_url}
@@ -242,8 +243,9 @@ export default function ShopsSettings({
                                 </h2>
                                 <p className="mt-1 text-sm text-muted-foreground">
                                     Use this on a new computer before you add
-                                    products or make a sale. Staff can then sign
-                                    in with their existing email and password.
+                                    products or make a sale. Leave the address
+                                    as it is, type the join code, then sign in
+                                    with the existing staff email and password.
                                 </p>
                             </div>
                             <div className="grid gap-2">
@@ -259,7 +261,7 @@ export default function ShopsSettings({
                                             event.target.value,
                                         )
                                     }
-                                    placeholder="https://app.example.com"
+                                    placeholder="https://software.kospal.com"
                                 />
                                 <InputError
                                     message={joinForm.errors.server_url}

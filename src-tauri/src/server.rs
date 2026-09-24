@@ -61,6 +61,7 @@ pub fn start(app: &AppHandle) -> Result<PhpServer, String> {
     let url = format!("http://127.0.0.1:{port}");
 
     write_runtime_env(&app_root, &url)?;
+    let ca_bundle = configure_ca_bundle(&php_exe, &app_root);
 
     let mut serve = Command::new(&php_exe);
     hide_console(&mut serve);
@@ -75,7 +76,11 @@ pub fn start(app: &AppHandle) -> Result<PhpServer, String> {
         .env("APP_URL", &url)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    if let Some(ca) = ca_bundle.as_ref() {
+        child.env("SSL_CERT_FILE", ca).env("CURL_CA_BUNDLE", ca);
+    }
+    let mut child = child
         .spawn()
         .map_err(|e| format!("failed to start PHP server ({php_exe:?}): {e}"))?;
 
@@ -87,14 +92,16 @@ pub fn start(app: &AppHandle) -> Result<PhpServer, String> {
 
     let mut schedule = Command::new(&php_exe);
     hide_console(&mut schedule);
-    let scheduler = schedule
+    let mut schedule = schedule
         .current_dir(&app_root)
         .args(["artisan", "schedule:work"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok();
+        .stderr(Stdio::null());
+    if let Some(ca) = ca_bundle.as_ref() {
+        schedule.env("SSL_CERT_FILE", ca).env("CURL_CA_BUNDLE", ca);
+    }
+    let scheduler = schedule.spawn().ok();
 
     Ok(PhpServer {
         child,
@@ -344,6 +351,56 @@ fn http_ok(host: &str, port: u16) -> bool {
         }
         _ => false,
     }
+}
+
+fn configure_ca_bundle(php_exe: &Path, app_root: &Path) -> Option<String> {
+    let ca = app_root
+        .join("resources")
+        .join("certs")
+        .join("cacert.pem");
+    if !ca.is_file() {
+        return None;
+    }
+
+    let ca_display = ca.to_string_lossy().replace('\\', "/");
+
+    if let Some(php_dir) = php_exe.parent() {
+        let ini_path = php_dir.join("php.ini");
+        let current = fs::read_to_string(&ini_path).unwrap_or_default();
+        let updated = upsert_ini(
+            &upsert_ini(&current, "curl.cainfo", &format!("\"{ca_display}\"")),
+            "openssl.cafile",
+            &format!("\"{ca_display}\""),
+        );
+        let _ = fs::write(&ini_path, updated);
+    }
+
+    Some(ca_display)
+}
+
+fn upsert_ini(contents: &str, key: &str, value: &str) -> String {
+    let mut replaced = false;
+    let mut out = String::new();
+
+    for line in contents.lines() {
+        let trimmed = line.trim().trim_start_matches(';').trim();
+        let is_key = trimmed.starts_with(&format!("{key}="))
+            || trimmed.starts_with(&format!("{key} ="));
+
+        if is_key {
+            out.push_str(&format!("{key}={value}\n"));
+            replaced = true;
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+
+    if !replaced {
+        out.push_str(&format!("{key}={value}\n"));
+    }
+
+    out
 }
 
 fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
